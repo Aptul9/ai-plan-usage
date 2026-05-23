@@ -1,0 +1,31 @@
+appId: io.local.ai-plan-usage-electron
+productName: ai-plan-usage-electron
+copyright: ""
+
+directories:
+  output: dist-packaged
+
+# tsc outDir = "." (project root), so compiled JS sits next to HTML.
+# Pull only what the runtime needs; leave src/ and *.ts out.
+files:
+  - "*.js"
+  - "*.js.map"
+  - "ui-dist/**/*"
+  - "assets/app-icon.png"
+  - "assets/app-icon.ico"
+  - "package.json"
+  - "!**/*.ts"
+  - "!src/**/*"
+  - "!tsconfig.json"
+  - "!electron-builder.yml"
+  - "!sync-ui.cjs"
+
+win:
+  target: portable
+  # Generated from apps/ui/icons by scripts/sync-icons.ps1.
+  # The tray icons under ui-dist/assets/icon-{green,orange,red,error}.png are 32x32
+  # and used at runtime via the Electron Tray API, not for the .exe icon.
+  icon: assets/app-icon.ico
+
+portable:
+  artifactName: ${productName}-${version}-portable.exe

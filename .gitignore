@@ -1,0 +1,32 @@
+# node + electron build artifacts (per-subproject .gitignore handles details)
+node_modules/
+yarn.lock
+pnpm-lock.yaml
+
+# logs
+*.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# probe outputs (real app)
+tmp/
+
+# packaged build outputs
+dist/
+dist-packaged/
+out/
+
+# mirrored artifacts from scripts/build-*.ps1
+artifacts/
+
+# Tauri's icon generator emits these by default, but this app is Windows desktop only.
+apps/tauri/src-tauri/icons/android/
+apps/tauri/src-tauri/icons/ios/
+apps/tauri/src-tauri/icons/Square*Logo.png
+apps/tauri/src-tauri/icons/StoreLogo.png

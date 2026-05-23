@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" style="color: #0F1419;">
+  <!-- Arco solido (~270°) -->
+  <path d="M 128.7 128.7 A 180 180 0 1 1 128.7 383.3"
+        stroke="currentColor" stroke-width="34" fill="none" stroke-linecap="round"/>
+
+  <!-- Pallini posizionati esplicitamente lungo l'arco di chiusura -->
+  <g fill="currentColor">
+    <circle cx="92.9" cy="179.9" r="11"/>
+    <circle cx="82.1" cy="209.4" r="11"/>
+    <circle cx="76.7" cy="240.3" r="11"/>
+    <circle cx="76.7" cy="271.7" r="11"/>
+    <circle cx="82.1" cy="302.6" r="11"/>
+    <circle cx="92.9" cy="332.1" r="11"/>
+    <circle cx="108.6" cy="359.3" r="11"/>
+  </g>
+
+  <!-- Freccia -->
+  <path d="M 93.3 164.1 L 111 111 L 146.4 146.4 Z" fill="currentColor"/>
+
+  <!-- Robot (solo testa, più grande) -->
+  <g fill="currentColor">
+    <!-- Antennina -->
+    <circle cx="256" cy="152" r="22"/>
+    <!-- Orecchie -->
+    <circle cx="181" cy="256" r="48"/>
+    <circle cx="331" cy="256" r="48"/>
+    <!-- Testa -->
+    <rect x="181" y="181" width="150" height="150" rx="32"/>
+  </g>
+
+  <!-- Occhi -->
+  <circle cx="216" cy="256" r="26" fill="#ffffff"/>
+  <circle cx="296" cy="256" r="26" fill="#ffffff"/>
+</svg>

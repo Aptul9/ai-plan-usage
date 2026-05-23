@@ -1,0 +1,11 @@
+{
+  "name": "ai-plan-usage-tauri",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Tauri shell for ai-plan-usage",
+  "scripts": {
+    "dev": "cargo tauri dev",
+    "build": "cargo tauri build",
+    "check": "cargo check --manifest-path src-tauri/Cargo.toml"
+  }
+}

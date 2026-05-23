@@ -1,0 +1,21 @@
+{
+  "name": "ai-plan-usage-electron",
+  "version": "0.0.2",
+  "private": true,
+  "description": "Electron implementation of ai-plan-usage.",
+  "main": "main.js",
+  "scripts": {
+    "build:ui": "npm --prefix ../ui run build && node sync-ui.cjs",
+    "build:shell": "tsc",
+    "build": "npm run build:ui && npm run build:shell",
+    "package": "npm run build && electron-builder --win portable",
+    "start": "npm run build && electron .",
+    "watch": "tsc -w"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.5.0"
+  }
+}

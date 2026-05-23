@@ -1,0 +1,16 @@
+node_modules/
+
+# tsc outputs next to HTML files
+/popover.js
+/popover.js.map
+/settings.js
+/settings.js.map
+/icon-renderer.js
+/icon-renderer.js.map
+
+# editor + OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
