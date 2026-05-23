@@ -4,8 +4,11 @@
   "private": true,
   "description": "Tauri shell for ai-plan-usage",
   "scripts": {
-    "dev": "cargo tauri dev",
-    "build": "cargo tauri build",
+    "dev": "tauri dev",
+    "build": "tauri build",
     "check": "cargo check --manifest-path src-tauri/Cargo.toml"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2"
   }
 }

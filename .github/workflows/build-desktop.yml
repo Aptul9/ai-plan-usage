@@ -34,6 +34,7 @@ jobs:
           cache-dependency-path: |
             apps/ui/package-lock.json
             apps/electron/package-lock.json
+            apps/tauri/package-lock.json
 
       - name: Install shared UI dependencies
         working-directory: apps/ui
@@ -41,6 +42,10 @@ jobs:
 
       - name: Install Electron dependencies
         working-directory: apps/electron
+        run: npm ci
+
+      - name: Install Tauri JavaScript CLI
+        working-directory: apps/tauri
         run: npm ci
 
       - name: Set up Rust
@@ -56,9 +61,6 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('apps/tauri/src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
 
       - name: Build Electron portable EXE
         run: npm --prefix apps/electron run package

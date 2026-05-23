@@ -5,7 +5,7 @@
 .DESCRIPTION
   Workflow:
     1. (optional) cargo clean if -Clean
-    2. cargo tauri build (runs sync-ui.cjs via beforeBuildCommand)
+    2. npm run build in apps/tauri (runs sync-ui.cjs via beforeBuildCommand)
     3. Copy apps/tauri/src-tauri/target/release/*.exe to ../artifacts/
 
   tauri.conf.json has bundle.active = false, so no MSI/NSIS installer
@@ -67,7 +67,7 @@ if (-not (Test-Path (Join-Path $uiDir 'node_modules\typescript')) ) {
 
 # Ensure cargo is reachable. Some shells (non-interactive, freshly spawned)
 # do not inherit ~/.cargo/bin from the user PATH registry. Prepend it
-# transiently when needed so `cargo` and `cargo-tauri` resolve.
+# transiently when needed so Rust builds launched by the Tauri CLI resolve.
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
     if (Test-Path (Join-Path $cargoBin 'cargo.exe')) {
@@ -77,8 +77,18 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
         throw "cargo not found in PATH and $cargoBin\cargo.exe does not exist. Install Rust via rustup."
     }
 }
-if (-not (Get-Command cargo-tauri -ErrorAction SilentlyContinue)) {
-    throw "cargo-tauri subcommand not found. Install with: cargo install tauri-cli --version `"^2`""
+if (-not (Test-Path (Join-Path $tauriDir 'node_modules\@tauri-apps\cli'))) {
+    Write-Host '[tauri] npm install (Tauri CLI)'
+    Push-Location $tauriDir
+    try {
+        & npm install
+        if ($LASTEXITCODE -ne 0) {
+            throw "tauri npm install failed (exit $LASTEXITCODE)"
+        }
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 Push-Location $tauriDir
@@ -91,10 +101,10 @@ try {
         }
     }
 
-    Write-Host '[tauri] cargo tauri build'
-    & cargo tauri build
+    Write-Host '[tauri] npm run build'
+    & npm run build
     if ($LASTEXITCODE -ne 0) {
-        throw "cargo tauri build failed (exit $LASTEXITCODE)"
+        throw "tauri build failed (exit $LASTEXITCODE)"
     }
 
     if (-not (Test-Path $releaseDir)) {

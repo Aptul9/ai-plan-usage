@@ -69,6 +69,7 @@ cd apps/ui
 npm install
 
 cd ..\tauri
+npm install
 npm run dev
 ```
 

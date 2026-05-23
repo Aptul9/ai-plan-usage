@@ -5,7 +5,7 @@ Tauri implementation of `ai-plan-usage`.
 ## Prereqs
 
 - Rust 1.77+
-- Tauri CLI 2.x
+- Node.js 20+
 - Windows 11 WebView2 runtime
 
 ## Run
@@ -19,6 +19,7 @@ npm install
 
 ```powershell
 cd apps/tauri
+npm install
 npm run dev
 ```
 
@@ -43,7 +44,7 @@ apps/tauri/src-tauri/target/release/ai-plan-usage.exe
 ## Layout
 
 - `src-tauri/` - Rust backend
-- `package.json` - thin wrapper around `cargo tauri ...`
+- `package.json` - thin wrapper around the npm Tauri CLI
 - `sync-ui.cjs` - syncs built UI files from `apps/ui/` into `ui-dist/`
 
 ## Module map
