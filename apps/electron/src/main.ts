@@ -11,6 +11,8 @@ import {
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import * as os from 'os'
+import { ChildProcess, spawn } from 'child_process'
+import { z } from 'zod'
 
 const CLAUDE_CREDS = path.join(os.homedir(), '.claude', '.credentials.json')
 const CODEX_CREDS = path.join(os.homedir(), '.codex', 'auth.json')
@@ -42,36 +44,83 @@ const legacySettingsFiles = (): string[] => [
   ),
 ]
 
-interface PersistShape {
-  copilotToken?: string
-  devMode?: boolean
-  primaryProvider?: ProviderId
-  iconStyle?: IconStyle
-  pollIntervalMs?: number
+const SETTINGS_VERSION = 1
+const PROVIDER_IDS = ['claude', 'codex', 'copilot'] as const
+const ICON_STYLE_IDS = ['solid', 'number', 'ring', 'ring+number', 'bar'] as const
+
+const SettingsSchema = z
+  .object({
+    settingsVersion: z.number().int().min(1).optional().catch(undefined),
+    copilotToken: z.string().optional().catch(undefined),
+    devMode: z.boolean().optional().catch(undefined),
+    primaryProvider: z.enum(PROVIDER_IDS).optional().catch(undefined),
+    enabledProviderIds: z.array(z.enum(PROVIDER_IDS)).optional().catch(undefined),
+    iconStyle: z.enum(ICON_STYLE_IDS).optional().catch(undefined),
+    pollIntervalMs: z.number().int().positive().optional().catch(undefined),
+  })
+  .strip()
+
+type PersistShape = z.infer<typeof SettingsSchema>
+
+function normalizePrimaryProvider(): void {
+  const primary = state.providers.find((p) => p.id === state.primaryProvider)
+  if (primary && primary.enabled && primary.available) return
+
+  const first = state.providers.find((p) => p.enabled && p.available)
+  if (first) state.primaryProvider = first.id
 }
 
-function applyParsed(parsed: any): void {
-  if (typeof parsed.copilotToken === 'string' && parsed.copilotToken) {
-    state.copilotToken = parsed.copilotToken
-    const cp = state.providers.find((p) => p.id === 'copilot')
-    if (cp) cp.available = true
+function applyParsed(parsed: unknown): void {
+  const result = SettingsSchema.safeParse(parsed)
+  if (!result.success) return
+
+  const settings = result.data
+  if (typeof settings.copilotToken === 'string') {
+    state.copilotToken = settings.copilotToken.trim() ? settings.copilotToken : null
   }
-  if (typeof parsed.devMode === 'boolean') state.devMode = parsed.devMode
-  if (parsed.primaryProvider) state.primaryProvider = parsed.primaryProvider
-  if (parsed.iconStyle) state.iconStyle = parsed.iconStyle
+
+  const cp = state.providers.find((p) => p.id === 'copilot')
+  if (cp) cp.available = !!state.copilotToken
+
+  if (typeof settings.devMode === 'boolean') state.devMode = settings.devMode
+  if (settings.primaryProvider) state.primaryProvider = settings.primaryProvider
+  if (settings.iconStyle) state.iconStyle = settings.iconStyle
   if (
-    typeof parsed.pollIntervalMs === 'number' &&
-    POLL_INTERVALS.some((x) => x.ms === parsed.pollIntervalMs)
+    typeof settings.pollIntervalMs === 'number' &&
+    POLL_INTERVALS.some((x) => x.ms === settings.pollIntervalMs)
   ) {
-    state.pollIntervalMs = parsed.pollIntervalMs
+    state.pollIntervalMs = settings.pollIntervalMs
   }
+
+  if (settings.enabledProviderIds) {
+    const enabledProviderIds = new Set(settings.enabledProviderIds)
+    for (const provider of state.providers) {
+      provider.enabled = provider.available && enabledProviderIds.has(provider.id)
+    }
+  } else if (state.copilotToken && cp) {
+    cp.enabled = cp.available
+  }
+  normalizePrimaryProvider()
+}
+
+function shouldRewriteSettings(parsed: unknown): boolean {
+  const result = SettingsSchema.safeParse(parsed)
+  if (!result.success) return false
+
+  const settings = result.data
+  return (
+    settings.settingsVersion !== SETTINGS_VERSION ||
+    !settings.enabledProviderIds
+  )
 }
 
 async function loadPersistedSettings(): Promise<void> {
   // 1. shared file wins if present
   try {
     const raw = await fs.readFile(settingsFile(), 'utf8')
-    applyParsed(JSON.parse(raw))
+    const parsed = JSON.parse(raw)
+    applyParsed(parsed)
+    if (shouldRewriteSettings(parsed)) await persistSettings()
     return
   } catch {
     // not present, try legacy
@@ -101,15 +150,18 @@ async function loadPersistedSettings(): Promise<void> {
 
 async function persistSettings(): Promise<void> {
   const payload: PersistShape = {
+    settingsVersion: SETTINGS_VERSION,
     devMode: state.devMode,
     primaryProvider: state.primaryProvider,
+    enabledProviderIds: state.providers.filter((p) => p.enabled).map((p) => p.id),
     iconStyle: state.iconStyle,
     pollIntervalMs: state.pollIntervalMs,
   }
   if (state.copilotToken) payload.copilotToken = state.copilotToken
+  const serialized = SettingsSchema.parse(payload)
   await fs.mkdir(SHARED_SETTINGS_DIR, { recursive: true })
   const tmp = settingsFile() + '.tmp'
-  await fs.writeFile(tmp, JSON.stringify(payload, null, 2), 'utf8')
+  await fs.writeFile(tmp, JSON.stringify(serialized, null, 2), 'utf8')
   await fs.rename(tmp, settingsFile())
 }
 
@@ -121,6 +173,20 @@ interface FetchResult {
 }
 
 let claudeRetryAt: number | null = null
+let claudeRefreshInFlight = false
+let claudeLastLaunchAt = 0
+let codexRefreshInFlight = false
+let codexLastLaunchAt = 0
+
+interface ClaudeCredsSnapshot {
+  accessToken: string | null
+  expiresAt: number | null
+}
+
+interface CodexCredsSnapshot {
+  accessToken: string | null
+  refreshToken: string | null
+}
 
 function snapshotError(
   message: string,
@@ -184,6 +250,264 @@ function httpErrorDetail(status: number, body: string, retryAt: number | null): 
     )
   }
   return parts.join('\n')
+}
+
+async function readClaudeCredsSnapshot(): Promise<ClaudeCredsSnapshot | null> {
+  try {
+    const raw = await fs.readFile(CLAUDE_CREDS, 'utf8')
+    const parsed = JSON.parse(raw)
+    const oauth = parsed && parsed.claudeAiOauth
+    return {
+      accessToken:
+        oauth && typeof oauth.accessToken === 'string' && oauth.accessToken
+          ? oauth.accessToken
+          : null,
+      expiresAt:
+        oauth && typeof oauth.expiresAt === 'number' ? oauth.expiresAt : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function freshClaudeCreds(snapshot: ClaudeCredsSnapshot): boolean {
+  return !!snapshot.accessToken && !!snapshot.expiresAt && snapshot.expiresAt > Date.now() + 60_000
+}
+
+function claudeCredsAdvanced(
+  before: ClaudeCredsSnapshot | null,
+  after: ClaudeCredsSnapshot
+): boolean {
+  if (!before) return freshClaudeCreds(after)
+  return (
+    after.accessToken !== before.accessToken ||
+    (after.expiresAt || 0) > (before.expiresAt || 0)
+  )
+}
+
+async function readCodexCredsSnapshot(): Promise<CodexCredsSnapshot | null> {
+  try {
+    const raw = await fs.readFile(CODEX_CREDS, 'utf8')
+    const parsed = JSON.parse(raw)
+    const tokens = parsed && parsed.tokens
+    return {
+      accessToken:
+        tokens && typeof tokens.access_token === 'string' && tokens.access_token
+          ? tokens.access_token
+          : null,
+      refreshToken:
+        tokens && typeof tokens.refresh_token === 'string' && tokens.refresh_token
+          ? tokens.refresh_token
+          : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function codexCredsAdvanced(before: CodexCredsSnapshot | null, after: CodexCredsSnapshot): boolean {
+  if (!after.accessToken) return false
+  if (!before) return true
+  return after.accessToken !== before.accessToken
+}
+
+function launchHiddenClaude(): ChildProcess {
+  let child: ChildProcess
+  if (process.platform === 'win32') {
+    child = spawn('claude', [], { stdio: 'ignore', windowsHide: true })
+  } else if (process.platform === 'darwin') {
+    child = spawn('claude', [], { stdio: 'ignore' })
+  } else {
+    child = spawn('claude', [], { stdio: 'ignore' })
+  }
+  return child
+}
+
+function launchHiddenCodexRefresh(): ChildProcess {
+  if (process.platform === 'win32') {
+    return spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'codex debug models'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+  }
+  return spawn('codex', ['debug', 'models'], { stdio: 'ignore' })
+}
+
+function stopClaudeChild(child: ChildProcess | null): void {
+  if (!child || child.killed) return
+  try {
+    child.kill()
+  } catch {}
+}
+
+function stopCodexChild(child: ChildProcess | null): void {
+  if (!child || child.killed) return
+  try {
+    child.kill()
+  } catch {}
+}
+
+function setClaudeRefreshError(message: string, detail: string): void {
+  const snap = state.snapshots.claude
+  snap.error = snapshotError(message, 'token-expired', detail)
+  if (state.primaryProvider === 'claude') {
+    state.session = snap.session
+    state.weekly = snap.weekly
+    state.error = snap.error
+  }
+  broadcast()
+}
+
+function setCodexRefreshError(message: string, detail: string): void {
+  const snap = state.snapshots.codex
+  snap.error = snapshotError(message, 'token-expired', detail)
+  if (state.primaryProvider === 'codex') {
+    state.session = snap.session
+    state.weekly = snap.weekly
+    state.error = snap.error
+  }
+  broadcast()
+}
+
+async function refreshClaudeAfterTokenExpired(): Promise<void> {
+  if (claudeRefreshInFlight) {
+    setClaudeRefreshError(
+      'Claude token expired. Waiting for hidden `claude` to refresh credentials.',
+      'A hidden Claude refresh is already running. This app is polling ~/.claude/.credentials.json and will refresh usage automatically once the token changes.'
+    )
+    return
+  }
+
+  claudeRefreshInFlight = true
+  const before = await readClaudeCredsSnapshot()
+  let child: ChildProcess | null = null
+  let spawnError: Error | null = null
+  try {
+    const now = Date.now()
+    if (now - claudeLastLaunchAt < 2 * 60_000) {
+      setClaudeRefreshError(
+        'Claude token expired. Waiting for hidden `claude` to refresh credentials.',
+        'A hidden Claude refresh was launched recently. This app is polling ~/.claude/.credentials.json and will refresh usage automatically once the token changes.'
+      )
+    } else {
+      claudeLastLaunchAt = now
+      child = launchHiddenClaude()
+      child.once('error', (err) => {
+        spawnError = err
+      })
+      setClaudeRefreshError(
+        'Claude token expired. Launched hidden `claude`; waiting for refreshed credentials.',
+        'This app is polling ~/.claude/.credentials.json and will refresh usage automatically once the token changes.'
+      )
+    }
+
+    const deadline = Date.now() + 20_000
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      if (spawnError) {
+        throw spawnError
+      }
+      const after = await readClaudeCredsSnapshot()
+      if (after && freshClaudeCreds(after) && claudeCredsAdvanced(before, after)) {
+        claudeRefreshInFlight = false
+        stopClaudeChild(child)
+        void realFetchAll()
+        return
+      }
+    }
+
+    setClaudeRefreshError(
+      'Claude token expired. Hidden `claude` did not refresh credentials within 20 seconds.',
+      'Use Refresh now after Claude finishes updating ~/.claude/.credentials.json, or wait for the next scheduled poll.'
+    )
+  } catch (e: any) {
+    setClaudeRefreshError(
+      'Claude token expired. Could not launch hidden `claude`.',
+      e && e.message ? e.message : String(e)
+    )
+  } finally {
+    stopClaudeChild(child)
+    claudeRefreshInFlight = false
+  }
+}
+
+async function refreshCodexAfterTokenExpired(): Promise<void> {
+  if (codexRefreshInFlight) {
+    setCodexRefreshError(
+      'Codex token expired. Waiting for hidden `codex debug models` to refresh credentials.',
+      'A hidden Codex refresh is already running. This app is polling ~/.codex/auth.json and will refresh usage automatically once the token changes.'
+    )
+    return
+  }
+
+  codexRefreshInFlight = true
+  const before = await readCodexCredsSnapshot()
+  let child: ChildProcess | null = null
+  let spawnError: Error | null = null
+  let childExit: { code: number | null; signal: NodeJS.Signals | null } | null = null
+  try {
+    if (!before?.refreshToken) {
+      setCodexRefreshError(
+        'Codex token expired. Run `codex` interactively.',
+        'No Codex refresh token was found in ~/.codex/auth.json, so the app cannot refresh credentials in the background.'
+      )
+      return
+    }
+
+    const now = Date.now()
+    if (now - codexLastLaunchAt < 2 * 60_000) {
+      setCodexRefreshError(
+        'Codex token expired. Waiting for hidden `codex debug models` to refresh credentials.',
+        'A hidden Codex refresh was launched recently. This app is polling ~/.codex/auth.json and will refresh usage automatically once the token changes.'
+      )
+    } else {
+      codexLastLaunchAt = now
+      child = launchHiddenCodexRefresh()
+      child.once('error', (err) => {
+        spawnError = err
+      })
+      child.once('exit', (code, signal) => {
+        childExit = { code, signal }
+      })
+      setCodexRefreshError(
+        'Codex token expired. Launched hidden `codex debug models`; waiting for refreshed credentials.',
+        'Bare `codex` requires a terminal, so this app runs `codex debug models` hidden and polls ~/.codex/auth.json for a refreshed access token.'
+      )
+    }
+
+    const deadline = Date.now() + 20_000
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      if (spawnError) {
+        throw spawnError
+      }
+      const after = await readCodexCredsSnapshot()
+      if (after && codexCredsAdvanced(before, after)) {
+        codexRefreshInFlight = false
+        stopCodexChild(child)
+        void realFetchAll()
+        return
+      }
+      if (childExit && childExit.code !== 0) {
+        throw new Error(
+          `codex debug models exited with ${childExit.code ?? `signal ${childExit.signal}`}`
+        )
+      }
+    }
+
+    setCodexRefreshError(
+      'Codex token expired. Hidden `codex debug models` did not refresh credentials within 20 seconds.',
+      'Run Codex interactively if it asks for an update or login, then use Refresh now or wait for the next scheduled poll.'
+    )
+  } catch (e: any) {
+    setCodexRefreshError(
+      'Codex token expired. Could not refresh with hidden `codex debug models`.',
+      e && e.message ? e.message : String(e)
+    )
+  } finally {
+    stopCodexChild(child)
+    codexRefreshInFlight = false
+  }
 }
 
 async function fetchClaudeUsage(): Promise<FetchResult> {
@@ -442,6 +766,13 @@ async function realFetchAll(): Promise<void> {
       })
     )
 
+    const claudeTokenExpired = results.some(
+      ([id, result]) => id === 'claude' && result.error?.kind === 'token-expired'
+    )
+    const codexTokenExpired = results.some(
+      ([id, result]) => id === 'codex' && result.error?.kind === 'token-expired'
+    )
+
     for (const [id, result] of results) {
       applyResult(id, result)
     }
@@ -454,6 +785,9 @@ async function realFetchAll(): Promise<void> {
     }
     state.fetchedAt = new Date().toISOString()
     broadcast()
+
+    if (claudeTokenExpired) void refreshClaudeAfterTokenExpired()
+    if (codexTokenExpired) void refreshCodexAfterTokenExpired()
   } finally {
     fetchInFlight = false
   }
@@ -481,7 +815,7 @@ let iconRendererReady: Promise<void> | null = null
 const APP_ASSET_DIR = path.join(__dirname, 'assets')
 const STATUS_ICON_DIR = path.join(UI_DIST_DIR, 'assets')
 const APP_ICON_PATH = path.join(APP_ASSET_DIR, 'app-icon.png')
-const ICON_STYLES: IconStyle[] = ['solid', 'number', 'ring', 'ring+number', 'bar']
+const ICON_STYLES: IconStyle[] = [...ICON_STYLE_IDS]
 const POLL_INTERVALS: PollIntervalOption[] = [
   { label: '30 seconds (dev)', ms: 30_000 },
   { label: '1 minute', ms: 60_000 },

@@ -17,5 +17,8 @@
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }

@@ -42,6 +42,20 @@ pub async fn run_once(app: AppHandle, state: Arc<Mutex<AppState>>) {
         (s.copilot_token.clone(), enabled)
     };
     let results = providers::fetch_all(copilot_token, enabled_provider_ids).await;
+    let claude_token_expired = results.iter().any(|(id, res)| {
+        id == "claude"
+            && res
+                .error
+                .as_ref()
+                .is_some_and(|err| err.kind == "token-expired")
+    });
+    let codex_token_expired = results.iter().any(|(id, res)| {
+        id == "codex"
+            && res
+                .error
+                .as_ref()
+                .is_some_and(|err| err.kind == "token-expired")
+    });
     {
         let mut s = state.lock().await;
         for (id, res) in results {
@@ -54,5 +68,11 @@ pub async fn run_once(app: AppHandle, state: Arc<Mutex<AppState>>) {
         let public = s.public_state();
         let _ = app.emit("snapshot-updated", public);
         tray::refresh_icon(&app, &s);
+    }
+    if claude_token_expired {
+        crate::claude_cli::refresh_after_token_expired(app.clone(), state.clone());
+    }
+    if codex_token_expired {
+        crate::codex_cli::refresh_after_token_expired(app, state);
     }
 }

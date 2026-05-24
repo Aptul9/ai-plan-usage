@@ -1,3 +1,5 @@
+mod claude_cli;
+mod codex_cli;
 mod commands;
 mod icon;
 mod popover;

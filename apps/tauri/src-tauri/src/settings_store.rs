@@ -2,14 +2,20 @@ use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+const SETTINGS_VERSION: u32 = 1;
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct PersistShape {
+    #[serde(rename = "settingsVersion", skip_serializing_if = "Option::is_none")]
+    settings_version: Option<u32>,
     #[serde(rename = "copilotToken", skip_serializing_if = "Option::is_none")]
     copilot_token: Option<String>,
     #[serde(rename = "devMode", skip_serializing_if = "Option::is_none")]
     dev_mode: Option<bool>,
     #[serde(rename = "primaryProvider", skip_serializing_if = "Option::is_none")]
     primary_provider: Option<String>,
+    #[serde(rename = "enabledProviderIds", skip_serializing_if = "Option::is_none")]
+    enabled_provider_ids: Option<Vec<String>>,
     #[serde(rename = "iconStyle", skip_serializing_if = "Option::is_none")]
     icon_style: Option<String>,
     #[serde(rename = "pollIntervalMs", skip_serializing_if = "Option::is_none")]
@@ -38,6 +44,25 @@ fn legacy_settings_path() -> PathBuf {
     legacy_shared_dir().join("settings.json")
 }
 
+fn apply_enabled_provider_ids(state: &mut AppState, enabled_ids: &[String]) {
+    for provider in &mut state.providers {
+        provider.enabled = provider.available && enabled_ids.iter().any(|id| id == &provider.id);
+    }
+}
+
+fn normalize_primary_provider(state: &mut AppState) {
+    let primary_ok = state
+        .providers
+        .iter()
+        .any(|p| p.id == state.primary_provider && p.enabled && p.available);
+    if primary_ok {
+        return;
+    }
+    if let Some(first) = state.providers.iter().find(|p| p.enabled && p.available) {
+        state.primary_provider = first.id.clone();
+    }
+}
+
 pub fn load_or_default() -> AppState {
     let mut state = AppState::defaults();
     let path = settings_path();
@@ -51,6 +76,9 @@ pub fn load_or_default() -> AppState {
     let Ok(parsed) = serde_json::from_str::<PersistShape>(&raw) else {
         return state;
     };
+    let should_rewrite = migrated
+        || parsed.settings_version != Some(SETTINGS_VERSION)
+        || parsed.enabled_provider_ids.is_none();
     if let Some(t) = parsed.copilot_token {
         if !t.is_empty() {
             state.copilot_token = Some(t);
@@ -67,6 +95,13 @@ pub fn load_or_default() -> AppState {
             state.primary_provider = p;
         }
     }
+    if let Some(enabled_provider_ids) = parsed.enabled_provider_ids {
+        apply_enabled_provider_ids(&mut state, &enabled_provider_ids);
+    } else if state.copilot_token.is_some() {
+        if let Some(p) = state.providers.iter_mut().find(|p| p.id == "copilot") {
+            p.enabled = p.available;
+        }
+    }
     if let Some(s) = parsed.icon_style {
         if AppState::icon_styles().contains(&s.as_str()) {
             state.icon_style = s;
@@ -77,7 +112,8 @@ pub fn load_or_default() -> AppState {
             state.poll_interval_ms = ms;
         }
     }
-    if migrated {
+    normalize_primary_provider(&mut state);
+    if should_rewrite {
         persist(&state);
     }
     state
@@ -85,9 +121,18 @@ pub fn load_or_default() -> AppState {
 
 pub fn persist(state: &AppState) {
     let payload = PersistShape {
+        settings_version: Some(SETTINGS_VERSION),
         copilot_token: state.copilot_token.clone(),
         dev_mode: Some(state.dev_mode),
         primary_provider: Some(state.primary_provider.clone()),
+        enabled_provider_ids: Some(
+            state
+                .providers
+                .iter()
+                .filter(|p| p.enabled)
+                .map(|p| p.id.clone())
+                .collect(),
+        ),
         icon_style: Some(state.icon_style.clone()),
         poll_interval_ms: Some(state.poll_interval_ms),
     };
