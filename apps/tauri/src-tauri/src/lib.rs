@@ -1,5 +1,6 @@
 mod claude_cli;
 mod codex_cli;
+mod color;
 mod commands;
 mod icon;
 mod popover;

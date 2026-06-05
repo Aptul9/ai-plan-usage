@@ -49,10 +49,59 @@ function fmtDuration(ms: number): string {
   return `${m}m`
 }
 
-function colorForPct(pct: number): string {
-  if (pct >= 95) return '#dc2626'
-  if (pct >= 80) return '#d97706'
-  return '#22a06b'
+const HEX_GREEN = '#22a06b'
+const HEX_AMBER = '#d97706'
+const HEX_RED = '#dc2626'
+
+const SESSION_5H_MS = 5 * 3600 * 1000
+const WEEKLY_7D_MS = 168 * 3600 * 1000
+
+interface ColorParams {
+  aStart: number
+  aEnd: number
+  rStart: number
+  rEnd: number
+  redFloor: number | null
+}
+
+const PARAMS_SESSION: ColorParams = { aStart: 25, aEnd: 3, rStart: 30, rEnd: 5, redFloor: 95 }
+const PARAMS_WEEKLY: ColorParams = { aStart: 35, aEnd: 2, rStart: 55, rEnd: 3, redFloor: null }
+
+function threshold(pace: number, start: number, end: number): number {
+  return start + (end - start) * (pace / 100)
+}
+
+function colorForPctStatic(pct: number): string {
+  if (pct >= 95) return HEX_RED
+  if (pct >= 80) return HEX_AMBER
+  return HEX_GREEN
+}
+
+function colorForWindow(
+  usedPct: number,
+  resetsAtIso: string | null,
+  totalWindowMs: number,
+  params: ColorParams
+): string {
+  if (params.redFloor != null && usedPct >= params.redFloor) return HEX_RED
+  if (!resetsAtIso || totalWindowMs <= 0) return colorForPctStatic(usedPct)
+  const resetsMs = new Date(resetsAtIso).getTime()
+  if (!Number.isFinite(resetsMs)) return colorForPctStatic(usedPct)
+  const nowMs = Date.now()
+  const remaining = Math.max(0, Math.min(totalWindowMs, resetsMs - nowMs))
+  const elapsed = totalWindowMs - remaining
+  const pace = (elapsed / totalWindowMs) * 100
+  const delta = usedPct - pace
+  const amberThr = threshold(pace, params.aStart, params.aEnd)
+  const redThr = threshold(pace, params.rStart, params.rEnd)
+  if (delta >= redThr) return HEX_RED
+  if (delta >= amberThr) return HEX_AMBER
+  return HEX_GREEN
+}
+
+function paramsForSlot(slotKey: 'session' | 'weekly'): { params: ColorParams; totalMs: number } {
+  if (slotKey === 'weekly') return { params: PARAMS_WEEKLY, totalMs: WEEKLY_7D_MS }
+  return { params: PARAMS_SESSION, totalMs: SESSION_5H_MS }
 }
 
 function buildWidget(label: string): HTMLDivElement {
@@ -90,7 +139,8 @@ function updateWidget(
   widgetEl: Element,
   pct: number | null,
   resetIso: string | null,
-  errored: boolean
+  errored: boolean,
+  slotKey: 'session' | 'weekly'
 ): void {
   const arc = widgetEl.querySelector('.ring .fg') as SVGCircleElement
   const num = widgetEl.querySelector('.ring-num') as HTMLElement
@@ -104,10 +154,12 @@ function updateWidget(
     return
   }
   const clamped = Math.max(0, Math.min(100, pct))
+  const { params, totalMs } = paramsForSlot(slotKey)
+  const color = colorForWindow(clamped, resetIso, totalMs, params)
   arc.style.strokeDashoffset = String(CIRCUMFERENCE * (1 - clamped / 100))
-  arc.style.stroke = colorForPct(clamped)
+  arc.style.stroke = color
   num.textContent = String(Math.round(clamped))
-  num.style.color = colorForPct(clamped)
+  num.style.color = color
   reset.textContent = resetIso
     ? fmtDuration(new Date(resetIso).getTime() - Date.now())
     : ''
@@ -283,7 +335,7 @@ function render(s: PublicState): void {
       if (slot.kind === 'overage') {
         updateOverageWidget(widget, block, errored)
       } else {
-        updateWidget(widget, block.usedPct, block.resetsAt, errored)
+        updateWidget(widget, block.usedPct, block.resetsAt, errored, slot.key)
       }
     })
   }

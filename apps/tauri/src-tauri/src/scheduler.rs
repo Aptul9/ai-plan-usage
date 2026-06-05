@@ -24,6 +24,18 @@ pub fn start(app: AppHandle, state: Arc<Mutex<AppState>>) {
             run_once(app_clone.clone(), state_clone.clone()).await;
         }
     });
+
+    // Repaint the tray icon every 60s, independent of the fetch loop. The
+    // pace-based color depends on the current time, so it must re-render as
+    // time elapses even when no new usage data arrived. Local render only,
+    // no network call, so it is cheap to run on a short cadence.
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            let s = state.lock().await;
+            tray::refresh_icon(&app, &s);
+        }
+    });
 }
 
 pub async fn run_once(app: AppHandle, state: Arc<Mutex<AppState>>) {

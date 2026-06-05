@@ -1,6 +1,16 @@
 const canvas = document.getElementById('c') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
 
+function pickCriticalColor(a: string, b: string): string {
+  const rank = (c: string): number => {
+    if (c === '#dc2626') return 3
+    if (c === '#d97706') return 2
+    if (c === '#22a06b') return 1
+    return 0
+  }
+  return rank(a) >= rank(b) ? a : b
+}
+
 ;(window as any).renderIcon = function (style: IconStyle, payload: IconPayload): string {
   const W = 64
   const H = 64
@@ -34,8 +44,7 @@ const ctx = canvas.getContext('2d')!
   const wCol = week.color
 
   if (style === 'solid') {
-    const pct = Math.max(sPct, wPct)
-    const col = pct >= 95 ? '#dc2626' : pct >= 80 ? '#d97706' : '#22a06b'
+    const col = pickCriticalColor(sCol, wCol)
     ctx.fillStyle = col
     ctx.beginPath(); ctx.arc(cx, cy, 28, 0, Math.PI * 2); ctx.fill()
   } else if (style === 'number') {
@@ -64,7 +73,15 @@ const ctx = canvas.getContext('2d')!
     ctx.beginPath()
     ctx.arc(cx, cy, 30, -Math.PI / 2, -Math.PI / 2 + (wPct / 100) * Math.PI * 2)
     ctx.stroke()
-    ctx.fillStyle = sCol
+    // Red session value: low-luminance red digits vanish on a dark taskbar.
+    // Back them with a filled red disc and render the digits white.
+    if (sCol === '#dc2626') {
+      ctx.fillStyle = '#dc2626'
+      ctx.beginPath(); ctx.arc(cx, cy, 27, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = 'white'
+    } else {
+      ctx.fillStyle = sCol
+    }
     ctx.font = 'bold 36px "Segoe UI", system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'

@@ -1,6 +1,6 @@
 [package]
 name = "ai-plan-usage"
-version = "0.0.2"
+version = "0.0.3"
 description = "Tauri implementation of ai-plan-usage"
 edition = "2021"
 rust-version = "1.77"

@@ -1,6 +1,6 @@
 {
   "name": "ai-plan-usage-tauri",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "description": "Tauri shell for ai-plan-usage",
   "scripts": {

@@ -30,3 +30,7 @@ apps/tauri/src-tauri/icons/android/
 apps/tauri/src-tauri/icons/ios/
 apps/tauri/src-tauri/icons/Square*Logo.png
 apps/tauri/src-tauri/icons/StoreLogo.png
+
+# local design scratch, not shipped
+icon-preview/
+docs/superpowers/

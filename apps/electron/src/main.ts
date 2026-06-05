@@ -663,7 +663,20 @@ async function fetchCopilotUsage(): Promise<FetchResult> {
       premium && typeof premium.entitlement === 'number' ? premium.entitlement : null
     const overage =
       premium && typeof premium.overage_count === 'number' ? premium.overage_count : 0
-    const usedAbs = entitlement != null ? entitlement + overage : null
+    const remaining =
+      premium && typeof premium.remaining === 'number'
+        ? premium.remaining
+        : premium && typeof premium.quota_remaining === 'number'
+          ? Math.round(premium.quota_remaining)
+          : premium && typeof premium.quotaRemaining === 'number'
+            ? Math.round(premium.quotaRemaining)
+            : null
+    // Consumed = (entitlement - remaining) + overage. Falls back to the old
+    // entitlement + overage when `remaining` is absent (pre-2026-06 payloads).
+    const usedAbs =
+      entitlement != null
+        ? (remaining != null ? Math.max(0, entitlement - remaining) : entitlement) + overage
+        : null
     return {
       session: { usedPct: null, resetsAt: null },
       weekly: {
@@ -870,11 +883,56 @@ function publicState(): PublicState {
   return rest
 }
 
-function colorForPct(pct: number | null): string {
-  if (pct == null) return '#888888'
-  if (pct >= 95) return '#dc2626'
-  if (pct >= 80) return '#d97706'
-  return '#22a06b'
+const HEX_GREEN = '#22a06b'
+const HEX_AMBER = '#d97706'
+const HEX_RED = '#dc2626'
+const HEX_GRAY = '#888888'
+
+const SESSION_5H_MS = 5 * 3600 * 1000
+const WEEKLY_7D_MS = 168 * 3600 * 1000
+
+interface ColorParams {
+  aStart: number
+  aEnd: number
+  rStart: number
+  rEnd: number
+  redFloor: number | null
+}
+
+const PARAMS_SESSION: ColorParams = { aStart: 25, aEnd: 3, rStart: 30, rEnd: 5, redFloor: 95 }
+const PARAMS_WEEKLY: ColorParams = { aStart: 35, aEnd: 2, rStart: 55, rEnd: 3, redFloor: null }
+
+function threshold(pace: number, start: number, end: number): number {
+  return start + (end - start) * (pace / 100)
+}
+
+function colorForPctStatic(pct: number): string {
+  if (pct >= 95) return HEX_RED
+  if (pct >= 80) return HEX_AMBER
+  return HEX_GREEN
+}
+
+function colorForWindow(
+  usedPct: number | null,
+  resetsAtIso: string | null | undefined,
+  totalWindowMs: number,
+  params: ColorParams
+): string {
+  if (usedPct == null) return HEX_GRAY
+  if (params.redFloor != null && usedPct >= params.redFloor) return HEX_RED
+  if (!resetsAtIso || totalWindowMs <= 0) return colorForPctStatic(usedPct)
+  const resetsMs = new Date(resetsAtIso).getTime()
+  if (!Number.isFinite(resetsMs)) return colorForPctStatic(usedPct)
+  const nowMs = Date.now()
+  const remaining = Math.max(0, Math.min(totalWindowMs, resetsMs - nowMs))
+  const elapsed = totalWindowMs - remaining
+  const pace = (elapsed / totalWindowMs) * 100
+  const delta = usedPct - pace
+  const amberThr = threshold(pace, params.aStart, params.aEnd)
+  const redThr = threshold(pace, params.rStart, params.rEnd)
+  if (delta >= redThr) return HEX_RED
+  if (delta >= amberThr) return HEX_AMBER
+  return HEX_GREEN
 }
 
 function iconPayload(): IconPayload {
@@ -885,10 +943,20 @@ function iconPayload(): IconPayload {
   if ((sess?.usedPct ?? null) == null && (week?.usedPct ?? null) != null) {
     sess = week
   }
+  // Window lengths per provider. Codex assumed same as Claude (API does not expose length).
+  // Copilot uses overage signal, not these thresholds; defaults are safe fallback.
+  const sessionTotalMs = SESSION_5H_MS
+  const weeklyTotalMs = WEEKLY_7D_MS
   return {
     error: state.error,
-    session: { pct: sess?.usedPct ?? null, color: colorForPct(sess?.usedPct ?? null) },
-    weekly: { pct: week?.usedPct ?? null, color: colorForPct(week?.usedPct ?? null) },
+    session: {
+      pct: sess?.usedPct ?? null,
+      color: colorForWindow(sess?.usedPct ?? null, sess?.resetsAt, sessionTotalMs, PARAMS_SESSION),
+    },
+    weekly: {
+      pct: week?.usedPct ?? null,
+      color: colorForWindow(week?.usedPct ?? null, week?.resetsAt, weeklyTotalMs, PARAMS_WEEKLY),
+    },
   }
 }
 

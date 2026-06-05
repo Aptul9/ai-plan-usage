@@ -96,7 +96,22 @@ pub async fn fetch(token: Option<String>) -> FetchResult {
         .get("overage_count")
         .and_then(|v| v.as_i64())
         .unwrap_or(0);
-    let used_abs = entitlement.map(|e| e + overage);
+    let remaining = premium
+        .get("remaining")
+        .and_then(|v| v.as_i64())
+        .or_else(|| {
+            premium
+                .get("quota_remaining")
+                .or_else(|| premium.get("quotaRemaining"))
+                .and_then(|v| v.as_f64())
+                .map(|f| f.round() as i64)
+        });
+    // Consumed = (entitlement - remaining) + overage. Falls back to the old
+    // entitlement + overage when `remaining` is absent (pre-2026-06 payloads).
+    let used_abs = entitlement.map(|e| match remaining {
+        Some(r) => (e - r).max(0) + overage,
+        None => e + overage,
+    });
 
     FetchResult {
         session: Some(UsageBlock::default()),

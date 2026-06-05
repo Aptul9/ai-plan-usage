@@ -57,6 +57,7 @@ Settings are plain and practical: toggle providers, choose the primary provider,
 - **Primary provider selection** for the tray icon number and ring.
 - **Configurable refresh interval** with a 5 minute default.
 - **Local settings** under `%APPDATA%\ai-plan-usage\`.
+- **Pace-aware coloring** for the tray icon and popover (see `docs/coloring.md`).
 - **No hosted backend** for your usage data.
 - **No analytics dashboard** or historical reporting layer.
 
