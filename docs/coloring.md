@@ -40,7 +40,7 @@ Two profiles. Session uses tighter tapering (a 5h window allows little recovery)
 | Window     | A_start | A_end | R_start | R_end | Red floor |
 |------------|---------|-------|---------|-------|-----------|
 | Session 5h | 25      | 3     | 30      | 5     | 95%       |
-| Weekly 7d  | 35      | 2     | 55      | 3     | none      |
+| Weekly 7d  | 20      | 2     | 28      | 3     | none      |
 
 ## Examples
 
@@ -55,10 +55,11 @@ Session 5h:
 
 Weekly 7d:
 
-- Day 1, used 30%: pace 14, amber_thr ~30.4. Green (still under amber).
-- Day 1, used 45%: delta +31 >= amber_thr 30.4. Amber.
-- Day 6, used 92%: pace 86, delta +6, amber_thr ~6.62. Green.
-- Day 6, used 96%: delta +10 >= amber_thr 6.62. Amber.
+- Day 1, used 30%: pace 14, delta +16, amber_thr 17.48. Green.
+- Day 1, used 45%: delta +31 >= red_thr 24.5. Red.
+- Day 4, used 70%: pace 57, delta +13, amber_thr 9.74, red_thr 13.75. Amber.
+- Day 6, used 92%: pace 86, delta +6, amber_thr 4.53, red_thr 6.08. Amber.
+- Day 6, used 96%: delta +10 >= red_thr 6.08. Red.
 
 ## Where each color goes
 

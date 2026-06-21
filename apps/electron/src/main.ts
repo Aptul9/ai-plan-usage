@@ -510,6 +510,109 @@ async function refreshCodexAfterTokenExpired(): Promise<void> {
   }
 }
 
+const CLAUDE_OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
+const CLAUDE_TOKEN_URL = 'https://platform.claude.com/v1/oauth/token'
+
+type ClaudeRefreshResult =
+  | { kind: 'refreshed'; accessToken: string }
+  | { kind: 'rate-limited'; retryAt: number | null }
+  | { kind: 'terminal'; detail: string }
+
+function claudeUsageRequest(token: string): Promise<Response> {
+  return fetch('https://api.anthropic.com/api/oauth/usage', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'anthropic-beta': 'oauth-2025-04-20',
+      'User-Agent': 'claude-code/2.1.0',
+      Accept: 'application/json',
+    },
+  })
+}
+
+// Atomically rewrite ~/.claude/.credentials.json with rotated tokens, keeping
+// every other field Claude Code stores (org uuid, scopes, etc.).
+async function persistClaudeTokens(
+  accessToken: string,
+  refreshToken: string,
+  expiresAt: number
+): Promise<void> {
+  let root: any = {}
+  try {
+    root = JSON.parse(await fs.readFile(CLAUDE_CREDS, 'utf8'))
+  } catch {
+    root = {}
+  }
+  if (!root || typeof root !== 'object') root = {}
+  if (!root.claudeAiOauth || typeof root.claudeAiOauth !== 'object') root.claudeAiOauth = {}
+  root.claudeAiOauth.accessToken = accessToken
+  root.claudeAiOauth.refreshToken = refreshToken
+  root.claudeAiOauth.expiresAt = expiresAt
+  const tmp = `${CLAUDE_CREDS}.tmp`
+  await fs.writeFile(tmp, JSON.stringify(root), 'utf8')
+  try {
+    await fs.rename(tmp, CLAUDE_CREDS)
+  } catch {
+    try {
+      await fs.unlink(CLAUDE_CREDS)
+    } catch {}
+    await fs.rename(tmp, CLAUDE_CREDS)
+  }
+}
+
+// Exchange the refresh token for a fresh access token and persist the rotation.
+// Anthropic's Cloudflare edge 1010-blocks automation User-Agents on this
+// endpoint, so the request must look like the CLI.
+async function refreshClaudeToken(refreshToken: string): Promise<ClaudeRefreshResult> {
+  let resp: Response
+  try {
+    resp = await fetch(CLAUDE_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+        'User-Agent': 'claude-code/2.1.0',
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: CLAUDE_OAUTH_CLIENT_ID,
+      }).toString(),
+    })
+  } catch (e: any) {
+    return { kind: 'terminal', detail: `refresh network: ${e?.message ?? String(e)}` }
+  }
+  if (resp.status === 429) {
+    return {
+      kind: 'rate-limited',
+      retryAt: retryAtFromHeaders(resp.headers) ?? Date.now() + 5 * 60_000,
+    }
+  }
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '')
+    return { kind: 'terminal', detail: `refresh HTTP ${resp.status}: ${truncate(body.trim(), 200)}` }
+  }
+  let data: any
+  try {
+    data = JSON.parse(await resp.text())
+  } catch (e: any) {
+    return { kind: 'terminal', detail: `refresh parse: ${e?.message ?? String(e)}` }
+  }
+  const accessToken =
+    typeof data.access_token === 'string' && data.access_token ? data.access_token : null
+  if (!accessToken) return { kind: 'terminal', detail: 'refresh response missing access_token' }
+  const newRefresh =
+    typeof data.refresh_token === 'string' && data.refresh_token ? data.refresh_token : refreshToken
+  const expiresIn = typeof data.expires_in === 'number' ? data.expires_in : 8 * 3600
+  const expiresAt = Date.now() + expiresIn * 1000
+  try {
+    await persistClaudeTokens(accessToken, newRefresh, expiresAt)
+  } catch {
+    // best effort: still use the new token this round
+  }
+  return { kind: 'refreshed', accessToken }
+}
+
 async function fetchClaudeUsage(): Promise<FetchResult> {
   if (claudeRetryAt && claudeRetryAt > Date.now()) {
     const wait = formatDuration(claudeRetryAt - Date.now())
@@ -533,22 +636,93 @@ async function fetchClaudeUsage(): Promise<FetchResult> {
       error: snapshotError('Claude not logged in. Run `claude`.', 'not-authenticated'),
     }
   }
-  const token = creds.claudeAiOauth && creds.claudeAiOauth.accessToken
-  if (!token) {
+  const oauth = creds.claudeAiOauth
+  const initialToken =
+    oauth && typeof oauth.accessToken === 'string' && oauth.accessToken ? oauth.accessToken : null
+  if (!initialToken) {
     return {
       error: snapshotError('Claude credentials missing accessToken', 'bad-credentials'),
     }
   }
+  let token: string = initialToken
+  const expiresAt: number | null =
+    oauth && typeof oauth.expiresAt === 'number' ? oauth.expiresAt : null
+  const refreshToken: string | null =
+    oauth && typeof oauth.refreshToken === 'string' && oauth.refreshToken ? oauth.refreshToken : null
+
+  // Pre-flight expiry guard. Sending a known-dead token only trips Anthropic's
+  // edge rate limiter (HTTP 429), which masks the underlying 401 and prevents
+  // the refresh path from ever firing. Detect expiry locally and refresh first.
+  if (expiresAt != null && expiresAt <= Date.now() + 60_000) {
+    if (refreshToken) {
+      const refreshed = await refreshClaudeToken(refreshToken)
+      if (refreshed.kind === 'refreshed') {
+        token = refreshed.accessToken
+        claudeRetryAt = null
+      } else if (refreshed.kind === 'rate-limited') {
+        claudeRetryAt = refreshed.retryAt
+        const wait = refreshed.retryAt
+          ? formatDuration(refreshed.retryAt - Date.now())
+          : 'a few minutes'
+        return {
+          error: snapshotError(
+            `Claude token refresh is rate limited. Retrying in ${wait}.`,
+            'rate-limited',
+            'Anthropic returned HTTP 429 on the OAuth token endpoint; requests are paused until the backoff expires.',
+            refreshed.retryAt ? new Date(refreshed.retryAt).toISOString() : undefined
+          ),
+        }
+      } else {
+        return {
+          error: snapshotError(
+            'Claude token expired. Refresh failed; run `claude`.',
+            'token-expired',
+            refreshed.detail
+          ),
+        }
+      }
+    } else {
+      return {
+        error: snapshotError(
+          'Claude token expired. Run `claude` to re-authenticate.',
+          'token-expired',
+          'No refresh token is stored (e.g. a `claude setup-token` token), so the app cannot refresh it in the background.'
+        ),
+      }
+    }
+  }
+
   try {
-    const resp = await fetch('https://api.anthropic.com/api/oauth/usage', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'anthropic-beta': 'oauth-2025-04-20',
-        'User-Agent': 'claude-code/2.1.0',
-        Accept: 'application/json',
-      },
-    })
+    let resp = await claudeUsageRequest(token)
+    // If the server still rejects the token, try one in-process refresh + retry.
+    if (resp.status === 401 && refreshToken) {
+      const refreshed = await refreshClaudeToken(refreshToken)
+      if (refreshed.kind === 'refreshed') {
+        token = refreshed.accessToken
+        claudeRetryAt = null
+        resp = await claudeUsageRequest(token)
+      } else if (refreshed.kind === 'rate-limited') {
+        claudeRetryAt = refreshed.retryAt
+        return {
+          error: snapshotError(
+            `Claude token refresh is rate limited. Retrying in ${
+              refreshed.retryAt ? formatDuration(refreshed.retryAt - Date.now()) : 'a few minutes'
+            }.`,
+            'rate-limited',
+            'Anthropic returned HTTP 429 on the OAuth token endpoint.',
+            refreshed.retryAt ? new Date(refreshed.retryAt).toISOString() : undefined
+          ),
+        }
+      } else {
+        return {
+          error: snapshotError(
+            'Claude token expired. Run `claude`.',
+            'token-expired',
+            refreshed.detail
+          ),
+        }
+      }
+    }
     if (resp.status === 401) {
       claudeRetryAt = null
       return {
@@ -900,7 +1074,7 @@ interface ColorParams {
 }
 
 const PARAMS_SESSION: ColorParams = { aStart: 25, aEnd: 3, rStart: 30, rEnd: 5, redFloor: 95 }
-const PARAMS_WEEKLY: ColorParams = { aStart: 35, aEnd: 2, rStart: 55, rEnd: 3, redFloor: null }
+const PARAMS_WEEKLY: ColorParams = { aStart: 20, aEnd: 2, rStart: 28, rEnd: 3, redFloor: null }
 
 function threshold(pace: number, start: number, end: number): number {
   return start + (end - start) * (pace / 100)

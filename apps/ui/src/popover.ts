@@ -65,7 +65,7 @@ interface ColorParams {
 }
 
 const PARAMS_SESSION: ColorParams = { aStart: 25, aEnd: 3, rStart: 30, rEnd: 5, redFloor: 95 }
-const PARAMS_WEEKLY: ColorParams = { aStart: 35, aEnd: 2, rStart: 55, rEnd: 3, redFloor: null }
+const PARAMS_WEEKLY: ColorParams = { aStart: 20, aEnd: 2, rStart: 28, rEnd: 3, redFloor: null }
 
 function threshold(pace: number, start: number, end: number): number {
   return start + (end - start) * (pace / 100)

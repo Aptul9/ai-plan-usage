@@ -55,10 +55,12 @@ fn creds_path() -> PathBuf {
 
 #[cfg(target_os = "windows")]
 fn resolve_claude_command() -> PathBuf {
+    use std::os::windows::process::CommandExt;
     if let Ok(output) = Command::new("where")
         .arg("claude")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
     {
         let stdout = String::from_utf8_lossy(&output.stdout);

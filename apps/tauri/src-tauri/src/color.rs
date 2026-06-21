@@ -34,9 +34,9 @@ pub const PARAMS_SESSION: ColorParams = ColorParams {
 };
 
 pub const PARAMS_WEEKLY: ColorParams = ColorParams {
-    a_start: 35.0,
+    a_start: 20.0,
     a_end: 2.0,
-    r_start: 55.0,
+    r_start: 28.0,
     r_end: 3.0,
     red_floor: None,
 };
@@ -161,27 +161,27 @@ mod tests {
     #[test]
     fn weekly_no_red_floor() {
         // Weekly: used 99 at day 1 (pace 14) -> delta +85, way above red_thr -> red by delta.
-        // Used 95 at day 6 (pace 86) -> delta +9, above amber_thr 6.62 but below red_thr 10.28 -> amber.
-        // Confirms no abs floor on weekly.
+        // Used 95 at day 6 (pace 86) -> delta +9, above red_thr 6.08 -> red by delta (no abs floor).
+        // Confirms no abs floor on weekly (color comes from delta, not floor).
         let p = PARAMS_WEEKLY;
         let t = WEEKLY_7D_SECS;
-        assert_eq!(run(95.0, 86.0, p, t), HEX_AMBER);
+        assert_eq!(run(95.0, 86.0, p, t), HEX_RED);
     }
 
     #[test]
     fn weekly_walkthrough() {
         let p = PARAMS_WEEKLY;
         let t = WEEKLY_7D_SECS;
-        // Day 1 (pace 14), used 30 -> green
+        // Day 1 (pace 14), used 30 (delta +16) -> amber_thr 17.48 -> green
         assert_eq!(run(30.0, 14.0, p, t), HEX_GREEN);
-        // Day 1, used 45 -> amber
-        assert_eq!(run(45.0, 14.0, p, t), HEX_AMBER);
-        // Day 4 (pace 57), used 70 -> green
-        assert_eq!(run(70.0, 57.0, p, t), HEX_GREEN);
-        // Day 6 (pace 86), used 92 -> green
-        assert_eq!(run(92.0, 86.0, p, t), HEX_GREEN);
-        // Day 6, used 96 -> amber
-        assert_eq!(run(96.0, 86.0, p, t), HEX_AMBER);
+        // Day 1, used 45 (delta +31) -> red_thr 24.5 -> red
+        assert_eq!(run(45.0, 14.0, p, t), HEX_RED);
+        // Day 4 (pace 57), used 70 (delta +13) -> amber_thr 9.74, red_thr 13.75 -> amber
+        assert_eq!(run(70.0, 57.0, p, t), HEX_AMBER);
+        // Day 6 (pace 86), used 92 (delta +6) -> amber_thr 4.53, red_thr 6.08 -> amber
+        assert_eq!(run(92.0, 86.0, p, t), HEX_AMBER);
+        // Day 6, used 96 (delta +10) -> red_thr 6.08 -> red
+        assert_eq!(run(96.0, 86.0, p, t), HEX_RED);
     }
 
     #[test]
