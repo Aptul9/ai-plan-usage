@@ -1,3 +1,4 @@
+mod accounts;
 mod claude_cli;
 mod codex_cli;
 mod color;
