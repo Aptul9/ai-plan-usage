@@ -25,9 +25,13 @@ const CODEX_ISSUER: &str = "https://auth.openai.com";
 pub const CODEX_DEVICE_PAGE: &str = "https://auth.openai.com/codex/device";
 const UA: &str = "ai-plan-usage";
 
+/// `state` is its own random value: the verifier must never leave the app, and
+/// the callback page echoes `state` back in the pasted code.
+#[derive(Debug, Clone)]
 pub struct Pkce {
     pub verifier: String,
     pub challenge: String,
+    pub state: String,
 }
 
 pub fn challenge_for(verifier: &str) -> String {
@@ -37,7 +41,8 @@ pub fn challenge_for(verifier: &str) -> String {
 pub fn pkce() -> Pkce {
     let verifier = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
     let challenge = challenge_for(&verifier);
-    Pkce { verifier, challenge }
+    let state = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
+    Pkce { verifier, challenge, state }
 }
 
 pub fn claude_authorize_url(p: &Pkce) -> String {
@@ -51,19 +56,35 @@ pub fn claude_authorize_url(p: &Pkce) -> String {
             ("scope", CLAUDE_SCOPE),
             ("code_challenge", p.challenge.as_str()),
             ("code_challenge_method", "S256"),
-            ("state", p.verifier.as_str()),
+            ("state", p.state.as_str()),
         ],
     )
     .expect("static authorize URL")
     .to_string()
 }
 
-/// The callback page shows `code#state`; a bare code is accepted too.
+/// The callback page shows `code#state`; a bare code is accepted too, and an
+/// empty state counts as absent.
 pub fn split_code(input: &str) -> (String, Option<String>) {
     let input = input.trim();
     match input.split_once('#') {
-        Some((code, state)) => (code.to_string(), Some(state.to_string())),
+        Some((code, state)) if !state.is_empty() => (code.to_string(), Some(state.to_string())),
+        Some((code, _)) => (code.to_string(), None),
         None => (input.to_string(), None),
+    }
+}
+
+/// The code to exchange, after checking the pasted state belongs to this sign-in.
+fn code_for(pasted: &str, p: &Pkce) -> Result<String, String> {
+    let (code, state) = split_code(pasted);
+    if code.is_empty() {
+        return Err("Paste the code shown after signing in.".into());
+    }
+    match state {
+        Some(s) if s != p.state => {
+            Err("This code belongs to another sign-in. Open the sign-in page again.".into())
+        }
+        _ => Ok(code),
     }
 }
 
@@ -92,7 +113,20 @@ fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()
-        .map_err(|e| e.to_string())
+        .map_err(|e| format!("network: {e}"))
+}
+
+/// An initial exchange has no earlier refresh token to fall back on.
+fn require_refresh(c: OauthCreds) -> Result<OauthCreds, String> {
+    if c.refresh.is_empty() {
+        return Err("Sign-in returned no refresh token.".into());
+    }
+    Ok(c)
+}
+
+async fn json_body(resp: reqwest::Response) -> Result<Value, String> {
+    let text = resp.text().await.map_err(|e| format!("network: {e}"))?;
+    serde_json::from_str(&text).map_err(|e| format!("response parse: {e}"))
 }
 
 async fn token_body(resp: reqwest::Response) -> Result<TokenResponse, String> {
@@ -105,27 +139,24 @@ async fn token_body(resp: reqwest::Response) -> Result<TokenResponse, String> {
     serde_json::from_str(&text).map_err(|e| format!("token parse: {e}"))
 }
 
-pub async fn claude_exchange(pasted: &str, verifier: &str) -> Result<OauthCreds, String> {
-    let (code, state) = split_code(pasted);
-    if code.is_empty() {
-        return Err("Paste the code shown after sign-in".into());
-    }
+pub async fn claude_exchange(pasted: &str, p: &Pkce) -> Result<OauthCreds, String> {
+    let code = code_for(pasted, p)?;
     let resp = client()?
         .post(CLAUDE_TOKEN_URL)
         .header("User-Agent", CLAUDE_CODE_UA)
         .header("Accept", "application/json")
         .json(&json!({
             "code": code,
-            "state": state.unwrap_or_else(|| verifier.to_string()),
+            "state": p.state,
             "grant_type": "authorization_code",
             "client_id": CLAUDE_CLIENT_ID,
             "redirect_uri": CLAUDE_REDIRECT,
-            "code_verifier": verifier,
+            "code_verifier": p.verifier,
         }))
         .send()
         .await
         .map_err(|e| format!("network: {e}"))?;
-    Ok(token_body(resp).await?.into_creds("", None))
+    require_refresh(token_body(resp).await?.into_creds("", None))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -162,7 +193,7 @@ pub async fn codex_device_start() -> Result<DeviceCode, String> {
     if !resp.status().is_success() {
         return Err(format!("device code HTTP {}", resp.status().as_u16()));
     }
-    let v: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let v = json_body(resp).await?;
     parse_device_code(&v).ok_or_else(|| "device code response malformed".to_string())
 }
 
@@ -183,7 +214,7 @@ pub async fn codex_device_poll(d: &DeviceCode) -> Result<Option<OauthCreds>, Str
     if !(200..300).contains(&status) {
         return Err(format!("device token HTTP {status}"));
     }
-    let v: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let v = json_body(resp).await?;
     let code = v
         .get("authorization_code")
         .and_then(Value::as_str)
@@ -212,7 +243,7 @@ pub async fn codex_device_poll(d: &DeviceCode) -> Result<Option<OauthCreds>, Str
         .as_deref()
         .and_then(jwt_account_id)
         .or_else(|| jwt_account_id(&tokens.access_token));
-    Ok(Some(tokens.into_creds("", account)))
+    require_refresh(tokens.into_creds("", account)).map(Some)
 }
 
 pub async fn codex_refresh(creds: &OauthCreds) -> Result<OauthCreds, String> {
@@ -280,25 +311,56 @@ mod tests {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
         assert_eq!(p.challenge, challenge_for(&p.verifier));
+        assert_eq!(p.state.len(), 43);
+        assert_ne!(p.state, p.verifier);
     }
 
     #[test]
     fn authorize_url_carries_pkce_and_state() {
-        let p = Pkce { verifier: "v123".into(), challenge: "c456".into() };
+        let p = Pkce { verifier: "v123".into(), challenge: "c456".into(), state: "s789".into() };
         let url = reqwest::Url::parse(&claude_authorize_url(&p)).unwrap();
         let q: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
         assert_eq!(url.host_str(), Some("claude.com"));
         assert_eq!(q["code_challenge"], "c456");
-        assert_eq!(q["state"], "v123");
+        assert_eq!(q["state"], "s789");
         assert_eq!(q["code_challenge_method"], "S256");
         assert_eq!(q["scope"], "user:profile");
         assert_eq!(q["redirect_uri"], "https://platform.claude.com/oauth/code/callback");
     }
 
     #[test]
+    fn authorize_url_state_is_not_the_verifier() {
+        let p = pkce();
+        let url = reqwest::Url::parse(&claude_authorize_url(&p)).unwrap();
+        let q: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
+        assert_eq!(q["state"], p.state);
+        assert_ne!(q["state"], p.verifier);
+        assert!(!url.as_str().contains(&p.verifier));
+    }
+
+    #[test]
     fn splits_pasted_code() {
         assert_eq!(split_code(" abc#xyz \n"), ("abc".to_string(), Some("xyz".to_string())));
         assert_eq!(split_code("abc"), ("abc".to_string(), None));
+    }
+
+    #[test]
+    fn split_code_treats_empty_state_as_absent() {
+        assert_eq!(split_code("abc#"), ("abc".to_string(), None));
+    }
+
+    #[test]
+    fn code_for_checks_the_pasted_state() {
+        let p = Pkce { verifier: "v".into(), challenge: "c".into(), state: "s".into() };
+        assert_eq!(code_for("abc#s", &p), Ok("abc".to_string()));
+        assert_eq!(code_for("abc", &p), Ok("abc".to_string()));
+        assert_eq!(code_for("abc#", &p), Ok("abc".to_string()));
+        assert_eq!(
+            code_for("abc#other", &p),
+            Err("This code belongs to another sign-in. Open the sign-in page again.".to_string())
+        );
+        assert_eq!(code_for("  ", &p), Err("Paste the code shown after signing in.".to_string()));
+        assert_eq!(code_for("#s", &p), Err("Paste the code shown after signing in.".to_string()));
     }
 
     #[test]
@@ -324,5 +386,23 @@ mod tests {
         assert_eq!(c.access, "a");
         assert_eq!(c.refresh, "old");
         assert!(c.expires_at > chrono::Utc::now().timestamp_millis());
+    }
+
+    #[test]
+    fn token_response_uses_rotated_refresh() {
+        let t: TokenResponse =
+            serde_json::from_str(r#"{"access_token":"a","refresh_token":"new","expires_in":60}"#).unwrap();
+        assert_eq!(t.into_creds("old", None).refresh, "new");
+    }
+
+    #[test]
+    fn initial_exchange_without_refresh_token_is_rejected() {
+        let t: TokenResponse = serde_json::from_str(r#"{"access_token":"a"}"#).unwrap();
+        assert_eq!(
+            require_refresh(t.into_creds("", None)).unwrap_err(),
+            "Sign-in returned no refresh token."
+        );
+        let t: TokenResponse = serde_json::from_str(r#"{"access_token":"a","refresh_token":"r"}"#).unwrap();
+        assert_eq!(require_refresh(t.into_creds("", None)).unwrap().refresh, "r");
     }
 }
