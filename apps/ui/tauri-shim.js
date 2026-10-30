@@ -1,6 +1,5 @@
-// Loaded by popover.html + settings.html before the page scripts.
-// Under Electron, window.__TAURI__ is undefined → no-op (Electron preload.js sets window.mock).
-// Under Tauri (withGlobalTauri = true), defines window.mock backed by Tauri invoke + events.
+// Loaded by popover.html + settings.html before the page scripts. Defines
+// window.mock on top of Tauri invoke + events (withGlobalTauri = true).
 (function () {
   if (typeof window === 'undefined') return
   if (!window.__TAURI__ || !window.__TAURI__.core || !window.__TAURI__.event) return

@@ -37,7 +37,7 @@ apps/tauri/src-tauri/target/release/ai-plan-usage.exe
 
 ## Shared pieces
 
-- `%APPDATA%\ai-plan-usage\settings.json` is shared with Electron.
+- Settings live in `%APPDATA%\ai-plan-usage\settings.json`.
 - UI source lives in `apps/ui/` and is copied into `apps/tauri/ui-dist/` by `sync-ui.cjs`.
 - App identity icons are generated from `apps/ui/icons/` into `src-tauri/icons/`.
 

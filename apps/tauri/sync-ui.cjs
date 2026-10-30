@@ -1,5 +1,5 @@
 // Copies the runtime UI files from ../ui into ./ui-dist for Tauri's
-// frontendDist. Strips Electron-only files and node_modules. Runs from the
+// frontendDist. Skips node_modules. Runs from the
 // apps/tauri/ directory (set by tauri.conf.json build.beforeBuildCommand /
 // beforeDevCommand).
 const fs = require('fs')
@@ -15,8 +15,6 @@ const KEEP_FILES = [
   'popover.js',
   'settings.html',
   'settings.js',
-  'icon-renderer.html',
-  'icon-renderer.js',
   'tauri-shim.js',
 ]
 

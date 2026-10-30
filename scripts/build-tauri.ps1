@@ -48,9 +48,6 @@ if (-not (Test-Path $srcTauriDir)) {
 
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 
-Write-Host '[tauri] sync app icons'
-& $iconScript
-
 if (-not (Test-Path (Join-Path $uiDir 'node_modules\typescript')) ) {
     Write-Host '[tauri] npm install (shared UI)'
     Push-Location $uiDir
@@ -90,6 +87,9 @@ if (-not (Test-Path (Join-Path $tauriDir 'node_modules\@tauri-apps\cli'))) {
         Pop-Location
     }
 }
+
+Write-Host '[tauri] sync app icons'
+& $iconScript
 
 Push-Location $tauriDir
 try {

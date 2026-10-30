@@ -83,11 +83,10 @@ If `resets_at` is missing for a window, the indicator falls back to the previous
 
 ## Tuning
 
-Parameters live in code, in three places that must be kept in sync (Rust and TypeScript). To adjust:
+Parameters live in code, in two places that must be kept in sync (Rust and TypeScript). To adjust:
 
 - `apps/tauri/src-tauri/src/color.rs` -> `PARAMS_SESSION`, `PARAMS_WEEKLY`.
 - `apps/ui/src/popover.ts` -> `PARAMS_SESSION`, `PARAMS_WEEKLY`.
-- `apps/electron/src/main.ts` -> `PARAMS_SESSION`, `PARAMS_WEEKLY`.
 
 Window total lengths are also constants in the same files (`SESSION_5H_*`, `WEEKLY_7D_*`).
 

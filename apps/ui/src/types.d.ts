@@ -1,4 +1,4 @@
-// Global ambient types shared by Electron shell and browser-side UI.
+// Global ambient types for the Tauri webviews.
 
 declare global {
   type ProviderId = 'claude' | 'codex' | 'copilot'
@@ -67,12 +67,6 @@ declare global {
 
   type PublicState = Omit<State, 'copilotToken'>
 
-  interface IconPayload {
-    error: SnapshotError | null
-    session: { pct: number | null; color: string }
-    weekly: { pct: number | null; color: string }
-  }
-
   interface SettingsBundle {
     providers: ProviderEntry[]
     primaryProvider: ProviderId
@@ -111,7 +105,6 @@ declare global {
 
   interface Window {
     mock: MockAPI
-    renderIcon?: (style: IconStyle, payload: IconPayload) => string
   }
 }
 

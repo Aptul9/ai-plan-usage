@@ -63,8 +63,6 @@ Settings are plain and practical: toggle providers, choose the primary provider,
 
 ## Run
 
-The Tauri app is the main build.
-
 ```powershell
 cd apps/ui
 npm install
@@ -74,39 +72,17 @@ npm install
 npm run dev
 ```
 
-Electron is kept as a fallback/reference shell.
-
-```powershell
-cd apps/electron
-npm install
-npm start
-```
-
 ## Build
-
-Build the Tauri app:
 
 ```powershell
 scripts\build-tauri.ps1
 ```
 
-Build the Electron app:
-
-```powershell
-scripts\build-electron.ps1
-```
-
-Build both:
-
-```powershell
-scripts\build-all.ps1
-```
-
-Build outputs are mirrored into `artifacts/`.
+The build output is mirrored into `artifacts/`.
 
 ## GitHub Actions
 
-The desktop build workflow runs on `windows-latest` so both shells produce real Windows `.exe` files without Linux cross-compilation setup.
+The desktop build workflow runs on `windows-latest` so the app builds as a real Windows `.exe` without Linux cross-compilation setup.
 
 - Every push, pull request, and manual run uploads a `windows-desktop-exes` artifact.
-- Tags that start with `v` also create or update a GitHub Release and upload the Tauri and Electron `.exe` files.
+- Tags that start with `v` also create or update a GitHub Release and upload the `.exe`.
