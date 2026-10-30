@@ -5,6 +5,7 @@ mod color;
 mod commands;
 mod icon;
 mod meridian;
+mod oauth;
 mod popover;
 mod providers;
 mod scheduler;
