@@ -4,6 +4,7 @@ mod codex_cli;
 mod color;
 mod commands;
 mod icon;
+mod meridian;
 mod popover;
 mod providers;
 mod scheduler;

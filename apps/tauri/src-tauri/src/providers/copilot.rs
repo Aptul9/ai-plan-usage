@@ -124,5 +124,6 @@ pub async fn fetch(token: Option<String>) -> FetchResult {
         }),
         plan_type: data.copilot_plan.or(data.copilot_plan_camel),
         error: None,
+        rotated: None,
     }
 }

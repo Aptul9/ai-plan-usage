@@ -2,6 +2,7 @@ pub mod claude;
 pub mod codex;
 pub mod copilot;
 
+use crate::accounts::OauthCreds;
 use crate::state::{ProviderSnapshot, SnapshotError, UsageBlock};
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 
@@ -11,6 +12,9 @@ pub struct FetchResult {
     pub weekly: Option<UsageBlock>,
     pub plan_type: Option<String>,
     pub error: Option<SnapshotError>,
+    /// Tokens that replaced the account's own after a refresh. Saved even when
+    /// the usage call afterwards failed: refresh tokens are single use.
+    pub rotated: Option<OauthCreds>,
 }
 
 impl FetchResult {
@@ -28,6 +32,7 @@ impl FetchResult {
             session: None,
             weekly: None,
             plan_type: None,
+            rotated: None,
             error: Some(SnapshotError {
                 message: message.into(),
                 kind: kind.into(),
@@ -36,6 +41,11 @@ impl FetchResult {
                 retry_at: retry_at.map(Into::into),
             }),
         }
+    }
+
+    pub fn with_rotated(mut self, rotated: Option<OauthCreds>) -> Self {
+        self.rotated = rotated;
+        self
     }
 
     pub fn apply_to(&self, snap: &mut ProviderSnapshot) {
@@ -54,6 +64,13 @@ impl FetchResult {
         }
         snap.error = None;
     }
+}
+
+/// A failed token refresh: offline when no answer came back, otherwise the
+/// sign-in is gone.
+pub fn refresh_failed(message: &str, detail: String) -> FetchResult {
+    let kind = if detail.starts_with("network:") { "offline" } else { "signed-out" };
+    FetchResult::err_with_detail(message, kind, Some(detail), None::<String>)
 }
 
 pub async fn fetch_all(

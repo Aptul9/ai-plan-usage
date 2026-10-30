@@ -461,6 +461,7 @@ pub async fn fetch() -> FetchResult {
         weekly,
         plan_type: None,
         error: None,
+        rotated: None,
     }
 }
 
