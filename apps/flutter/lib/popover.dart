@@ -118,9 +118,9 @@ class PopoverWindow with WindowListener {
 // ---- Widgets ----
 
 const _ink = Color(0xff222222);
-// Windows ships no Segoe UI 500 or 600: the browser draws 500 as 400 and 600 as 700.
-const _w500 = FontWeight.w400;
-const _w600 = FontWeight.w700;
+// Windows ships no Segoe UI 500: WebView2 draws CSS 500 with Semibold, as 600.
+const _w500 = FontWeight.w600;
+const _w600 = FontWeight.w600;
 
 TextStyle seg(double size, {FontWeight weight = FontWeight.w400, Color color = _ink, double? height, double spacing = 0, bool tabular = false}) =>
     TextStyle(
@@ -133,6 +133,15 @@ TextStyle seg(double size, {FontWeight weight = FontWeight.w400, Color color = _
       leadingDistribution: TextLeadingDistribution.even,
       fontFeatures: tabular ? const [FontFeature.tabularFigures()] : null,
     );
+
+/// One text line in the box WebView2 gives it: Segoe UI's ascent and descent
+/// (2210 and 514 of 2048) each rounded to device pixels. Flutter's own line
+/// boxes are taller, and the popover rows would not add up to the same height.
+Widget cssLine(BuildContext context, double size, Widget text) {
+  final dpr = MediaQuery.devicePixelRatioOf(context);
+  final h = ((size * dpr * 2210 / 2048).round() + (size * dpr * 514 / 2048).round()) / dpr;
+  return SizedBox(height: h, child: OverflowBox(maxHeight: double.infinity, fit: OverflowBoxFit.deferToChild, child: text));
+}
 
 String accountName(Account a) => '${providerNames[a.provider]} · ${a.label}';
 
@@ -308,7 +317,7 @@ class _PopoverViewState extends State<PopoverView> {
   Widget _chipBox(String text, Color bg, Color fg) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(3)),
-        child: Text(text, style: seg(9, weight: _w600, color: fg)),
+        child: cssLine(context, 9, Text(text, style: seg(9, weight: _w600, color: fg))),
       );
 
   Widget _row(Account a, ProviderSnapshot? snap) {
@@ -329,11 +338,15 @@ class _PopoverViewState extends State<PopoverView> {
                 children: [
                   SvgPicture.asset(logos[a.provider]!, width: 32, height: 32),
                   const SizedBox(height: 2),
-                  Text(a.label,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                      style: seg(9, weight: _w600, color: const Color(0xff555555))),
+                  cssLine(
+                    context,
+                    9,
+                    Text(a.label,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        style: seg(9, weight: _w600, color: const Color(0xff555555))),
+                  ),
                 ],
               ),
             ),
@@ -350,11 +363,11 @@ class _PopoverViewState extends State<PopoverView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: seg(8, weight: _w600, color: const Color(0xff888888), spacing: 0.5)),
+            cssLine(context, 8, Text(label, style: seg(8, weight: _w600, color: const Color(0xff888888), spacing: 0.5))),
             const SizedBox(height: 1),
             main,
             const SizedBox(height: 1),
-            if (reset.isNotEmpty) Text(reset, style: seg(9, weight: _w500, color: const Color(0xff555555), tabular: true)),
+            if (reset.isNotEmpty) cssLine(context, 9, Text(reset, style: seg(9, weight: _w500, color: const Color(0xff555555), tabular: true))),
           ],
         ),
       );
@@ -428,9 +441,9 @@ class _PopoverViewState extends State<PopoverView> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Expanded(child: Text(e.label, style: seg(11, weight: FontWeight.w700))),
+              Expanded(child: cssLine(context, 11, Text(e.label, style: seg(11, weight: FontWeight.w700)))),
               const SizedBox(width: 8),
-              Text(e.error.kind, style: seg(9, weight: _w600, color: const Color(0xff991b1b))),
+              cssLine(context, 9, Text(e.error.kind, style: seg(9, weight: _w600, color: const Color(0xff991b1b)))),
             ],
           ),
           const SizedBox(height: 4),
@@ -441,7 +454,7 @@ class _PopoverViewState extends State<PopoverView> {
                 style: const TextStyle(
                     fontFamily: 'Consolas', fontSize: 10, height: 1.3, color: Color(0xff444444), leadingDistribution: TextLeadingDistribution.even)),
           ],
-          if (meta.isNotEmpty) ...[const SizedBox(height: 4), Text(meta, style: seg(9, color: const Color(0xff666666)))],
+          if (meta.isNotEmpty) ...[const SizedBox(height: 4), cssLine(context, 9, Text(meta, style: seg(9, color: const Color(0xff666666))))],
           if (e.error.kind == 'signed-out') ...[
             const SizedBox(height: 6),
             Pressable(
@@ -454,7 +467,7 @@ class _PopoverViewState extends State<PopoverView> {
                   border: Border.all(color: const Color(0xffe5e5e5)),
                   borderRadius: BorderRadius.circular(3),
                 ),
-                child: Text('Open Settings', style: seg(10, weight: _w600)),
+                child: cssLine(context, 10, Text('Open Settings', style: seg(10, weight: _w600))),
               ),
             ),
           ],
