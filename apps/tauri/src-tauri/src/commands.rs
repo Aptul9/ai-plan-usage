@@ -311,7 +311,11 @@ pub async fn claude_login_finish(
 #[tauri::command]
 pub async fn codex_login_start(state: State<'_, AppStateMutex>) -> Result<Value, String> {
     let d = oauth::codex_device_start().await?;
-    let out = json!({ "userCode": d.user_code, "url": oauth::CODEX_DEVICE_PAGE });
+    let out = json!({
+        "userCode": d.user_code,
+        "url": oauth::CODEX_DEVICE_PAGE,
+        "expiresInSecs": DEVICE_TIMEOUT.as_secs(),
+    });
     state.lock().await.pending.codex = Some(d);
     oauth::open_browser(oauth::CODEX_DEVICE_PAGE);
     Ok(out)

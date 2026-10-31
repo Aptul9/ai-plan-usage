@@ -10,7 +10,6 @@
   --text-2: #5c5c5c;
   --text-3: #6e6e6e;
   --track: #e3e3e3;
-  --ring-off: #c4c4c4;
   --danger: #c42b1c;
   --focus: #000000;
   --thumb: #c2c2c2;
@@ -29,7 +28,6 @@
     --text-2: #cfcfcf;
     --text-3: #a8a8a8;
     --track: #424242;
-    --ring-off: #5e5e5e;
     --danger: #ff99a4;
     --focus: #ffffff;
     --thumb: #5c5c5c;
@@ -233,8 +231,6 @@ body:has(.chip:not(.hidden)) { padding-top: 30px; }
   color: var(--text-3);
 }
 
-/* An errored ring shows only its track: the round cap would leave a dot at 12 o'clock. */
-.err-state .ring .fg { opacity: 0; }
 
 .error-panel {
   /* Takes the rows' width without widening the popover itself. */

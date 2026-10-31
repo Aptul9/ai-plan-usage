@@ -143,7 +143,10 @@
     .switch input:checked ~ .track { background: rgb(var(--accent)); border-color: rgb(var(--accent)); }
     .switch input:checked ~ .knob { transform: translateX(20px); background: rgb(var(--on-accent)); }
     .switch:hover input:checked ~ .knob { transform: translateX(20px) scale(1.2); }
-    #add-status:empty { display: none; }
+    #add-status:empty, #accounts-status:empty, #meridian-error:empty {
+      position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+    }
+    .btn:disabled, .btn-quiet:disabled { opacity: 0.5; pointer-events: none; }
     /* The add-account hint goes once a provider is picked. */
     #add-card:has([aria-pressed="true"]) #add-hint { display: none; }
     /* Status dot in front of the Meridian status; green when settings.ts marks it reachable. */
@@ -172,6 +175,7 @@
         <p class="text-xs text-fg-2 mt-0.5 leading-relaxed">Rows in the tray popover, in this order. Drag to reorder, click a name to rename. The star picks the account behind the tray icon.</p>
       </div>
       <div id="accounts" class="card divide-y divide-divider"></div>
+      <p id="accounts-status" class="text-[11px] text-red-600" role="status" aria-live="polite"></p>
     </section>
 
     <section class="space-y-2">
@@ -187,16 +191,16 @@
         <div id="add-claude" class="hidden space-y-3">
           <p class="text-xs text-fg-2 leading-relaxed">Meridian profiles appear on their own. This signs in to Claude directly: the browser opens, and the last page shows a code to paste here.</p>
           <div class="space-y-1">
-            <label for="claude-label" class="text-xs text-fg-2">Name</label>
+            <label for="claude-label" class="text-xs text-fg-2">Account name</label>
             <div class="flex gap-2">
-              <input id="claude-label" class="field flex-1 min-w-0" placeholder="For example Work" aria-label="Account name">
+              <input id="claude-label" class="field flex-1 min-w-0" placeholder="For example Work">
               <button id="claude-start" type="button" class="btn">Open sign-in page</button>
             </div>
           </div>
           <div id="claude-step2" class="hidden space-y-2">
             <label for="claude-code" class="text-xs text-fg-2">Code from the last page</label>
             <div class="flex gap-2">
-              <input id="claude-code" class="field flex-1 min-w-0 font-mono" placeholder="Paste the code" aria-label="Code from the sign-in page" autocomplete="off">
+              <input id="claude-code" class="field flex-1 min-w-0 font-mono" placeholder="Paste the code" autocomplete="off">
               <button id="claude-finish" type="button" class="btn">Add</button>
             </div>
             <input id="claude-url" class="field w-full !text-xs" readonly aria-label="Sign-in page address, if the browser did not open">
@@ -205,9 +209,9 @@
 
         <div id="add-codex" class="hidden space-y-3">
           <div class="space-y-1">
-            <label for="codex-label" class="text-xs text-fg-2">Name</label>
+            <label for="codex-label" class="text-xs text-fg-2">Account name</label>
             <div class="flex gap-2">
-              <input id="codex-label" class="field flex-1 min-w-0" placeholder="For example Personal" aria-label="Account name">
+              <input id="codex-label" class="field flex-1 min-w-0" placeholder="For example Personal">
               <button id="codex-start" type="button" class="btn">Get sign-in code</button>
             </div>
           </div>
@@ -215,18 +219,19 @@
             <div class="text-xs text-fg-2">Enter this code on the page that opened</div>
             <div id="codex-code" class="font-mono text-2xl font-semibold tracking-[0.2em] select-all"></div>
             <div id="codex-url" class="text-xs text-fg-2 select-all break-all"></div>
+            <div id="codex-expiry" class="text-xs text-fg-2 tabular-nums pt-1"></div>
           </div>
         </div>
 
         <div id="add-copilot" class="hidden space-y-3">
           <div class="flex gap-2 items-end">
             <div class="w-32 space-y-1">
-              <label for="copilot-label" class="text-xs text-fg-2">Name</label>
-              <input id="copilot-label" class="field w-full" placeholder="Work" aria-label="Account name">
+              <label for="copilot-label" class="text-xs text-fg-2">Account name</label>
+              <input id="copilot-label" class="field w-full" placeholder="Work">
             </div>
             <div class="flex-1 min-w-0 space-y-1">
               <label for="copilot-token" class="text-xs text-fg-2">GitHub token</label>
-              <input id="copilot-token" type="password" class="field w-full font-mono" placeholder="gho_... or ghp_..." aria-label="GitHub token" autocomplete="off">
+              <input id="copilot-token" type="password" class="field w-full font-mono" placeholder="gho_... or ghp_..." autocomplete="off">
             </div>
             <button id="copilot-save" type="button" class="btn">Add</button>
           </div>
@@ -250,11 +255,11 @@
       <div class="card p-4 space-y-3">
         <div class="space-y-1">
           <label for="meridian-url" class="text-xs text-fg-2">Address</label>
-          <input id="meridian-url" class="field w-full font-mono" placeholder="http://127.0.0.1:3456" aria-label="Meridian address">
+          <input id="meridian-url" class="field w-full font-mono" placeholder="http://127.0.0.1:3456">
         </div>
         <div class="space-y-1">
           <label for="meridian-key" class="text-xs text-fg-2">API key</label>
-          <input id="meridian-key" type="password" class="field w-full font-mono" aria-label="Meridian API key" autocomplete="off">
+          <input id="meridian-key" type="password" class="field w-full font-mono" autocomplete="off">
         </div>
         <div class="flex items-center gap-2 pt-1">
           <span id="meridian-status" class="text-xs text-zinc-500"></span>
@@ -263,6 +268,7 @@
             <button id="meridian-save" type="button" class="btn">Save</button>
           </div>
         </div>
+        <p id="meridian-error" class="text-[11px] text-red-600" role="status" aria-live="polite"></p>
       </div>
     </section>
 

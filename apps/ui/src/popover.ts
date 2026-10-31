@@ -153,7 +153,8 @@ function updateWidget(
   const reset = widgetEl.querySelector('.reset') as HTMLElement
   if (errored || pct == null) {
     arc.style.strokeDashoffset = String(CIRCUMFERENCE)
-    arc.style.stroke = 'var(--ring-off)'
+    // Track only: an empty arc's round cap would leave a dot at 12 o'clock.
+    arc.style.opacity = '0'
     num.textContent = errored ? '!' : '--'
     num.style.color = errored ? 'var(--danger)' : 'var(--text-3)'
     reset.textContent = ''
@@ -163,6 +164,7 @@ function updateWidget(
   const { params, totalMs } = paramsForSlot(slotKey)
   const color = colorForWindow(clamped, resetIso, totalMs, params)
   arc.style.strokeDashoffset = String(CIRCUMFERENCE * (1 - clamped / 100))
+  arc.style.opacity = ''
   arc.style.stroke = color
   num.textContent = String(Math.round(clamped))
   // The arc carries the pace color; the number stays in the text color for contrast in both themes.
@@ -195,8 +197,8 @@ function updateOverageWidget(
     of.textContent = `of ${block.entitlement}`
     main.style.color = ''
     if ((block.overage ?? 0) > 0) {
-      used.style.color = HEX_RED
-      of.style.color = HEX_RED
+      used.style.color = 'var(--danger)'
+      of.style.color = 'var(--danger)'
     }
     reset.textContent = block.resetsAt
       ? fmtDuration(new Date(block.resetsAt).getTime() - Date.now())

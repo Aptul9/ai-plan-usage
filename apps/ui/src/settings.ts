@@ -26,6 +26,8 @@ let cfg: SettingsBundle | null = null
 let dragging = false
 let addProvider: Provider | null = null
 let codexRun = 0
+let codexTimer = 0
+let meridianDirty = false
 
 function errText(e: unknown): string {
   if (typeof e === 'string') return e
@@ -38,6 +40,29 @@ function setAddStatus(text: string, tone: 'ok' | 'err' | 'info' = 'info'): void 
   if (!el) return
   el.textContent = text
   el.className = 'text-[11px] ' + (tone === 'ok' ? 'text-emerald-600' : tone === 'err' ? 'text-red-600' : 'text-zinc-500')
+}
+
+// Disables the button while its call runs, so a second click cannot start it twice.
+async function busy(btn: HTMLButtonElement | null, fn: () => Promise<void>): Promise<void> {
+  if (btn) btn.disabled = true
+  try {
+    await fn()
+  } finally {
+    if (btn) btn.disabled = false
+  }
+}
+
+// Non-add actions: the error goes to the status line of that block, and the UI always reloads to match the backend.
+async function runAction(statusId: string, fn: () => Promise<unknown>): Promise<void> {
+  const st = byId(statusId)
+  if (st) st.textContent = ''
+  try {
+    await fn()
+  } catch (e) {
+    if (st) st.textContent = errText(e)
+  } finally {
+    await reload()
+  }
 }
 
 async function reload(): Promise<void> {
@@ -54,6 +79,9 @@ function renderAccounts(): void {
   const active = document.activeElement
   const renaming = active instanceof HTMLInputElement && active.type === 'text' && root.contains(active)
   if (dragging || renaming) return
+  // Keyboard focus survives the rebuild: same row, same control.
+  const focusRow = active instanceof HTMLElement && root.contains(active) ? active.closest<HTMLElement>('.account-row') : null
+  const focusRole = focusRow && active instanceof HTMLElement ? active.dataset.role : undefined
   root.innerHTML = ''
   if (cfg.accounts.length === 0) {
     const empty = document.createElement('div')
@@ -63,6 +91,11 @@ function renderAccounts(): void {
     return
   }
   for (const a of cfg.accounts) root.appendChild(accountRow(a))
+  if (focusRow && focusRole) {
+    root
+      .querySelector<HTMLElement>(`.account-row[data-id="${CSS.escape(focusRow.dataset.id ?? '')}"] [data-role="${focusRole}"]`)
+      ?.focus()
+  }
 }
 
 function accountRow(a: Account): HTMLDivElement {
@@ -91,6 +124,7 @@ function accountRow(a: Account): HTMLDivElement {
   name.className = 'name-btn self-start max-w-full h-6 rounded text-left text-sm font-medium truncate hover:underline underline-offset-2' + (a.enabled ? '' : ' text-fg-3')
   name.textContent = a.label
   name.title = 'Rename'
+  name.dataset.role = 'name'
   name.addEventListener('click', () => startRename(row, a))
   text.appendChild(name)
   const caption = document.createElement('span')
@@ -105,13 +139,11 @@ function accountRow(a: Account): HTMLDivElement {
   star.className = 'flex items-center justify-center w-8 h-8 rounded-md shrink-0 hover:bg-subtle disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed ' + (isPrimary ? 'text-star' : 'text-fg-3 hover:text-fg')
   star.innerHTML = isPrimary ? ICON_STAR_FILLED : ICON_STAR
   star.title = isPrimary ? 'Behind the tray icon' : 'Use for the tray icon'
-  star.setAttribute('aria-label', star.title)
+  star.setAttribute('aria-label', 'Use for tray icon')
   star.setAttribute('aria-pressed', String(isPrimary))
+  star.dataset.role = 'star'
   star.disabled = !a.enabled
-  star.addEventListener('click', async () => {
-    await window.mock.setPrimary(a.id)
-    await reload()
-  })
+  star.addEventListener('click', () => runAction('accounts-status', () => window.mock.setPrimary(a.id)))
   row.appendChild(star)
 
   const sw = document.createElement('label')
@@ -123,10 +155,8 @@ function accountRow(a: Account): HTMLDivElement {
   `
   const cb = sw.querySelector('input') as HTMLInputElement
   cb.setAttribute('aria-label', `Show ${a.label} in the popover`)
-  cb.addEventListener('change', async () => {
-    await window.mock.setAccountEnabled(a.id, cb.checked)
-    await reload()
-  })
+  cb.dataset.role = 'toggle'
+  cb.addEventListener('change', () => runAction('accounts-status', () => window.mock.setAccountEnabled(a.id, cb.checked)))
   row.appendChild(sw)
 
   const remove = document.createElement('button')
@@ -134,22 +164,24 @@ function accountRow(a: Account): HTMLDivElement {
   remove.className = 'flex items-center justify-center h-8 min-w-8 px-2 rounded-md text-xs font-medium shrink-0 text-fg-3 hover:text-err hover:bg-err/10'
   remove.innerHTML = ICON_REMOVE
   remove.setAttribute('aria-label', `Remove ${a.label}`)
+  remove.dataset.role = 'remove'
   // Meridian rows come back on the next poll, so they are turned off instead.
   if (a.source === 'meridian') remove.classList.add('invisible')
   remove.addEventListener('click', async () => {
     if (remove.dataset.armed !== '1') {
       remove.dataset.armed = '1'
       remove.textContent = 'Remove?'
+      remove.setAttribute('aria-label', `Confirm remove ${a.label}`)
       remove.classList.add('text-err', 'bg-err/10')
       setTimeout(() => {
         remove.dataset.armed = ''
         remove.innerHTML = ICON_REMOVE
+        remove.setAttribute('aria-label', `Remove ${a.label}`)
         remove.classList.remove('text-err', 'bg-err/10')
       }, 3000)
       return
     }
-    await window.mock.removeAccount(a.id)
-    await reload()
+    await runAction('accounts-status', () => window.mock.removeAccount(a.id))
   })
   row.appendChild(remove)
   return row
@@ -189,7 +221,7 @@ function startRename(row: HTMLDivElement, a: Account): void {
 
 function startDrag(e: PointerEvent, row: HTMLDivElement): void {
   const root = byId('accounts')
-  if (!root || !cfg) return
+  if (!root || !cfg || e.button !== 0) return
   e.preventDefault()
   dragging = true
   const id = row.dataset.id
@@ -204,23 +236,30 @@ function startDrag(e: PointerEvent, row: HTMLDivElement): void {
     if (before) root.insertBefore(row, before)
     else root.appendChild(row)
   }
+  // pointerup, pointercancel and window blur all end the drag, so `dragging` cannot stay true.
   const up = async (): Promise<void> => {
     window.removeEventListener('pointermove', move)
     window.removeEventListener('pointerup', up)
+    window.removeEventListener('pointercancel', up)
+    window.removeEventListener('blur', up)
+    if (!dragging) return
     row.classList.remove('opacity-60', 'bg-zinc-50')
     const to = Array.from(root.querySelectorAll<HTMLDivElement>('.account-row')).findIndex((r) => r === row)
     dragging = false
-    if (to >= 0 && to !== from) await window.mock.moveAccount(id, to)
-    await reload()
+    await runAction('accounts-status', async () => {
+      if (to >= 0 && to !== from) await window.mock.moveAccount(id, to)
+    })
   }
   window.addEventListener('pointermove', move)
   window.addEventListener('pointerup', up)
+  window.addEventListener('pointercancel', up)
+  window.addEventListener('blur', up)
 }
 
 function renderMeridian(): void {
   if (!cfg) return
   const url = byId<HTMLInputElement>('meridian-url')
-  if (url && document.activeElement !== url) url.value = cfg.meridian.url
+  if (url && !meridianDirty && document.activeElement !== url) url.value = cfg.meridian.url
   const key = byId<HTMLInputElement>('meridian-key')
   if (key) {
     key.placeholder = cfg.meridian.hasApiKey
@@ -231,26 +270,62 @@ function renderMeridian(): void {
   const st = byId('meridian-status')
   if (!st) return
   const m = cfg.meridianStatus
-  let text = 'Not reachable'
+  const at = m.checkedAt ? new Date(m.checkedAt) : null
+  const checked = at && !Number.isNaN(at.getTime())
+    ? `, checked ${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}`
+    : ''
+  let text = `Not reachable${checked}`
   if (!cfg.meridian.url) text = 'Off'
   else if (!m.checkedAt) text = 'Not checked yet'
-  else if (m.reachable) text = `Reachable, ${m.profiles} Claude profile${m.profiles === 1 ? '' : 's'}`
+  else if (m.reachable) text = `Reachable, ${m.profiles} Claude profile${m.profiles === 1 ? '' : 's'}${checked}`
   st.textContent = text
   st.className = 'text-xs ' + (m.reachable && cfg.meridian.url ? 'text-emerald-600' : 'text-zinc-500')
 }
 
 function wireMeridian(): void {
-  byId('meridian-save')?.addEventListener('click', async () => {
-    const keyInput = byId<HTMLInputElement>('meridian-key')
-    const key = keyInput ? keyInput.value.trim() : ''
-    await window.mock.setMeridian(byId<HTMLInputElement>('meridian-url')?.value ?? '', key ? key : null)
-    if (keyInput) keyInput.value = ''
-    await reload()
+  // Unsaved edits in the address survive polls, focused or not.
+  byId('meridian-url')?.addEventListener('input', () => {
+    meridianDirty = true
   })
-  byId('meridian-clear-key')?.addEventListener('click', async () => {
-    await window.mock.setMeridian(byId<HTMLInputElement>('meridian-url')?.value ?? '', '')
-    await reload()
-  })
+  byId('meridian-save')?.addEventListener('click', () =>
+    runAction('meridian-error', async () => {
+      const keyInput = byId<HTMLInputElement>('meridian-key')
+      const key = keyInput ? keyInput.value.trim() : ''
+      await window.mock.setMeridian(byId<HTMLInputElement>('meridian-url')?.value ?? '', key ? key : null)
+      if (keyInput) keyInput.value = ''
+      meridianDirty = false
+    })
+  )
+  byId('meridian-clear-key')?.addEventListener('click', () =>
+    runAction('meridian-error', async () => {
+      await window.mock.setMeridian(byId<HTMLInputElement>('meridian-url')?.value ?? '', '')
+      meridianDirty = false
+    })
+  )
+}
+
+function stopCodexTimer(): void {
+  window.clearInterval(codexTimer)
+  codexTimer = 0
+}
+
+// Ticks "Code expires in m:ss" under the device code until 0, a newer run, or the end of the flow.
+function startCodexTimer(secs: number, run: number): void {
+  stopCodexTimer()
+  const el = byId('codex-expiry')
+  const end = Date.now() + secs * 1000
+  const tick = (): void => {
+    if (run !== codexRun) return stopCodexTimer()
+    const left = Math.max(0, Math.round((end - Date.now()) / 1000))
+    if (el) {
+      el.textContent = left > 0
+        ? `Code expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
+        : 'Code expired. Get a new one.'
+    }
+    if (left === 0) stopCodexTimer()
+  }
+  tick()
+  codexTimer = window.setInterval(tick, 1000)
 }
 
 function showAdd(p: Provider | null): void {
@@ -276,7 +351,7 @@ function wireAdd(): void {
     })
   })
 
-  byId('claude-start')?.addEventListener('click', async () => {
+  byId('claude-start')?.addEventListener('click', (ev) => busy(ev.currentTarget as HTMLButtonElement, async () => {
     try {
       const url = await window.mock.claudeLoginStart()
       const urlField = byId<HTMLInputElement>('claude-url')
@@ -287,9 +362,9 @@ function wireAdd(): void {
     } catch (e) {
       setAddStatus(errText(e), 'err')
     }
-  })
+  }))
 
-  byId('claude-finish')?.addEventListener('click', async () => {
+  byId('claude-finish')?.addEventListener('click', (ev) => busy(ev.currentTarget as HTMLButtonElement, async () => {
     try {
       await window.mock.claudeLoginFinish(value('claude-code'), value('claude-label'))
       const code = byId<HTMLInputElement>('claude-code')
@@ -300,32 +375,42 @@ function wireAdd(): void {
     } catch (e) {
       setAddStatus(errText(e), 'err')
     }
-  })
+  }))
 
-  byId('codex-start')?.addEventListener('click', async () => {
+  byId('codex-start')?.addEventListener('click', async (ev) => {
     const run = ++codexRun
+    stopCodexTimer()
     try {
-      const d = await window.mock.codexLoginStart()
+      // Disabled only while the code is fetched: a new code may be requested while one waits.
+      const btn = ev.currentTarget as HTMLButtonElement
+      btn.disabled = true
+      const d = await window.mock.codexLoginStart().finally(() => {
+        btn.disabled = false
+      })
+      if (run !== codexRun) return
       const code = byId('codex-code')
       if (code) code.textContent = d.userCode
       const url = byId('codex-url')
       if (url) url.textContent = d.url
       byId('codex-step2')?.classList.remove('hidden')
+      startCodexTimer(d.expiresInSecs, run)
       setAddStatus('Waiting for approval in the browser…')
       await window.mock.codexLoginFinish(value('codex-label'))
       if (run !== codexRun) return
+      stopCodexTimer()
       byId('codex-step2')?.classList.add('hidden')
       setAddStatus('Codex account added.', 'ok')
       await reload()
     } catch (e) {
       // A newer "Get sign-in code" click owns the panel now.
       if (run !== codexRun) return
+      stopCodexTimer()
       byId('codex-step2')?.classList.add('hidden')
       setAddStatus(errText(e), 'err')
     }
   })
 
-  byId('copilot-save')?.addEventListener('click', async () => {
+  byId('copilot-save')?.addEventListener('click', (ev) => busy(ev.currentTarget as HTMLButtonElement, async () => {
     try {
       await window.mock.copilotAddToken(value('copilot-token'), value('copilot-label'))
       const token = byId<HTMLInputElement>('copilot-token')
@@ -335,7 +420,7 @@ function wireAdd(): void {
     } catch (e) {
       setAddStatus(errText(e), 'err')
     }
-  })
+  }))
 
   byId('copilot-import-load')?.addEventListener('click', async () => {
     const list = byId('copilot-import-list')
@@ -362,7 +447,7 @@ function wireAdd(): void {
         add.type = 'button'
         add.className = 'btn-quiet'
         add.textContent = 'Add'
-        add.addEventListener('click', async () => {
+        add.addEventListener('click', () => busy(add, async () => {
           try {
             await window.mock.copilotImport(l.id, l.label)
             setAddStatus(`Copilot · ${l.label} added.`, 'ok')
@@ -371,7 +456,7 @@ function wireAdd(): void {
           } catch (e) {
             setAddStatus(errText(e), 'err')
           }
-        })
+        }))
         row.append(logo, name, add)
         list.appendChild(row)
       }
