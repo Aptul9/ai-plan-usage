@@ -1,6 +1,12 @@
 const CIRCUMFERENCE = 2 * Math.PI * 42
 
-const LOGOS: Record<ProviderId, string> = {
+const PROVIDER_NAMES: Record<Provider, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  copilot: 'Copilot',
+}
+
+const LOGOS: Record<Provider, string> = {
   claude: 'assets/claude-symbol.svg',
   codex: 'assets/openai-symbol.svg',
   copilot: 'assets/copilot-symbol.svg',
@@ -12,7 +18,7 @@ interface WidgetSlot {
   kind: 'ring' | 'overage'
 }
 
-const ROW_LAYOUTS: Record<ProviderId, WidgetSlot[]> = {
+const ROW_LAYOUTS: Record<Provider, WidgetSlot[]> = {
   claude: [
     { label: 'SESSION', key: 'session', kind: 'ring' },
     { label: 'WEEK', key: 'weekly', kind: 'ring' },
@@ -30,13 +36,13 @@ const ROW_LAYOUTS: Record<ProviderId, WidgetSlot[]> = {
 const $ = (id: string): HTMLElement | null => document.getElementById(id)
 
 interface ErrorView {
-  id: ProviderId
+  id: string
   label: string
   error: SnapshotError
 }
 
 let errorPanelOpen = false
-let selectedErrorProvider: ProviderId | null = null
+let selectedErrorProvider: string | null = null
 let latestErrors: ErrorView[] = []
 
 function fmtDuration(ms: number): string {
@@ -198,23 +204,33 @@ function updateOverageWidget(
   }
 }
 
-function buildProviderRow(id: ProviderId, label: string): HTMLDivElement {
+function accountName(a: Account): string {
+  return `${PROVIDER_NAMES[a.provider]} · ${a.label}`
+}
+
+function buildAccountRow(a: Account): HTMLDivElement {
   const row = document.createElement('div')
   row.className = 'provider-row'
-  row.dataset.provider = id
+  row.dataset.account = a.id
+  row.dataset.provider = a.provider
 
+  const ident = document.createElement('div')
+  ident.className = 'ident'
   const img = document.createElement('img')
   img.className = 'logo'
-  img.src = LOGOS[id] || ''
-  img.alt = label
-  row.appendChild(img)
+  img.src = LOGOS[a.provider] || ''
+  img.alt = PROVIDER_NAMES[a.provider]
+  ident.appendChild(img)
+  const name = document.createElement('span')
+  name.className = 'acct'
+  name.textContent = a.label
+  ident.title = accountName(a)
+  ident.appendChild(name)
+  row.appendChild(ident)
 
-  const layout = ROW_LAYOUTS[id] || ROW_LAYOUTS.claude
-  for (const slot of layout) {
-    if (slot.kind === 'overage') row.appendChild(buildOverageWidget(slot.label))
-    else row.appendChild(buildWidget(slot.label))
+  for (const slot of ROW_LAYOUTS[a.provider] || ROW_LAYOUTS.claude) {
+    row.appendChild(slot.kind === 'overage' ? buildOverageWidget(slot.label) : buildWidget(slot.label))
   }
-
   return row
 }
 
@@ -231,11 +247,11 @@ function formatTimestamp(iso: string | undefined): string | null {
 }
 
 function collectErrors(s: PublicState): ErrorView[] {
-  return (s.providers || [])
-    .filter((p) => p.enabled)
-    .map((p) => {
-      const snap = s.snapshots && s.snapshots[p.id]
-      return snap && snap.error ? { id: p.id, label: p.label, error: snap.error } : null
+  return (s.accounts || [])
+    .filter((a) => a.enabled)
+    .map((a) => {
+      const snap = s.snapshots && s.snapshots[a.id]
+      return snap && snap.error ? { id: a.id, label: accountName(a), error: snap.error } : null
     })
     .filter(Boolean) as ErrorView[]
 }
@@ -305,10 +321,14 @@ function rebuild(s: PublicState): void {
   const root = $('providers')
   if (!root) return
   root.innerHTML = ''
-  for (const p of s.providers) {
-    if (!p.enabled) continue
-    root.appendChild(buildProviderRow(p.id, p.label))
+  const shown = (s.accounts || []).filter((a) => a.enabled)
+  if (shown.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'empty'
+    empty.textContent = 'No accounts yet. Right-click the tray icon, then Settings, to add one.'
+    root.appendChild(empty)
   }
+  for (const a of shown) root.appendChild(buildAccountRow(a))
   render(s)
 }
 
@@ -320,14 +340,15 @@ function render(s: PublicState): void {
   }
   let firstErrMsg = latestErrors[0]?.error.message || null
   for (const row of Array.from(document.querySelectorAll<HTMLDivElement>('.provider-row'))) {
-    const id = row.dataset.provider as ProviderId
+    const id = row.dataset.account
+    const provider = row.dataset.provider as Provider
     const snap = s.snapshots && s.snapshots[id]
     if (!snap) continue
     const errored = !!snap.error
     row.classList.toggle('err-state', errored)
     row.title = errored ? snap.error!.message : ''
     const widgets = row.querySelectorAll('.widget')
-    const layout = ROW_LAYOUTS[id] || ROW_LAYOUTS.claude
+    const layout = ROW_LAYOUTS[provider] || ROW_LAYOUTS.claude
     layout.forEach((slot, i) => {
       const block: UsageBlock = (snap as any)[slot.key] || { usedPct: null, resetsAt: null }
       const widget = widgets[i]
@@ -383,7 +404,15 @@ function rebuildAndResize(s: PublicState): void {
 }
 
 let current: PublicState | null = null
-let lastProvIds = ''
+let lastRowsKey = ''
+
+// Rows are rebuilt when the shown accounts, their order or their names change.
+function rowsKey(s: PublicState): string {
+  return (s.accounts || [])
+    .filter((a) => a.enabled)
+    .map((a) => `${a.id}=${a.label}`)
+    .join('|')
+}
 
 const chipEl = $('chip') as HTMLButtonElement | null
 if (chipEl) {
@@ -403,21 +432,15 @@ document.addEventListener('keydown', (event) => {
 
 window.mock.getSnapshot().then((s) => {
   current = s
-  lastProvIds = (s.providers || [])
-    .filter((p) => p.enabled)
-    .map((p) => p.id)
-    .join(',')
+  lastRowsKey = rowsKey(s)
   rebuildAndResize(s)
 })
 
 window.mock.onUpdate((s) => {
   current = s
-  const ids = (s.providers || [])
-    .filter((p) => p.enabled)
-    .map((p) => p.id)
-    .join(',')
-  if (ids !== lastProvIds) {
-    lastProvIds = ids
+  const key = rowsKey(s)
+  if (key !== lastRowsKey) {
+    lastRowsKey = key
     rebuildAndResize(s)
   } else {
     render(s)
