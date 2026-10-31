@@ -100,8 +100,6 @@ declare global {
     copilotAddToken(token: string, label: string): Promise<string>
     copilotImportList(): Promise<OpenCodeLogin[]>
     copilotImport(id: string, label: string): Promise<string>
-    codexImportList(): Promise<OpenCodeLogin[]>
-    codexImport(id: string, label: string): Promise<string>
     resize(w: number, h: number): Promise<void>
     onUpdate(cb: (s: PublicState) => void): void
   }

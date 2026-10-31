@@ -32,8 +32,6 @@
     copilotAddToken: (token, label) => invoke('copilot_add_token', { token, label }),
     copilotImportList: () => invoke('copilot_import_list'),
     copilotImport: (id, label) => invoke('copilot_import', { id, label }),
-    codexImportList: () => invoke('codex_import_list'),
-    codexImport: (id, label) => invoke('codex_import', { id, label }),
     resize: (w, h) => invoke('popover_resize', { w: Math.ceil(w), h: Math.ceil(h) }),
     onUpdate: (cb) => {
       listen('snapshot-updated', (event) => cb(event.payload))

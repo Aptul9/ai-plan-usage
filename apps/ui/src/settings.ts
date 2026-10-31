@@ -423,7 +423,6 @@ function wireAdd(): void {
   }))
 
   wireOpenCodeImport('copilot', window.mock.copilotImportList, window.mock.copilotImport)
-  wireOpenCodeImport('codex', window.mock.codexImportList, window.mock.codexImport)
 }
 
 function wireOpenCodeImport(
