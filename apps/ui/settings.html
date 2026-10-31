@@ -21,6 +21,13 @@
               600: '#4f46e5',
               700: '#4338ca',
             },
+            // Names used by the rows settings.ts builds.
+            fg: { DEFAULT: '#18181b', 2: '#71717a', 3: '#a1a1aa' },
+            subtle: '#f4f4f5',
+            stroke: '#e4e4e7',
+            divider: '#f4f4f5',
+            star: '#f59e0b',
+            err: '#dc2626',
           },
         },
       },
@@ -32,6 +39,57 @@
     .scrollbar-thin::-webkit-scrollbar { width: 10px; }
     .scrollbar-thin::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
     .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #a1a1aa; background-clip: content-box; border: 2px solid transparent; }
+    :where(button, select, summary):focus-visible,
+    .switch input:focus-visible ~ .track {
+      outline: 2px solid #6366f1;
+      outline-offset: 2px;
+    }
+    .field, #accounts input:not([type="checkbox"]) {
+      height: 40px; border-radius: 8px; padding: 0 12px; font-size: 14px;
+      color: #18181b; background: #fff; border: 1px solid #e4e4e7;
+      box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+      transition: box-shadow 150ms ease, border-color 150ms ease;
+    }
+    #accounts input:not([type="checkbox"]) { height: 32px; padding: 0 8px; }
+    .field::placeholder { color: #a1a1aa; }
+    .field:focus, #accounts input:not([type="checkbox"]):focus {
+      outline: none; border-color: transparent; box-shadow: 0 0 0 2px #6366f1;
+    }
+    .field[readonly] { color: #71717a; background: #fafafa; }
+    .btn, .btn-quiet {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border-radius: 8px; font-size: 14px; font-weight: 500; white-space: nowrap;
+      transition: background-color 150ms ease, border-color 150ms ease;
+    }
+    .btn { height: 40px; padding: 0 16px; background: #18181b; color: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); }
+    .btn:hover { background: #27272a; }
+    .btn:active { background: #000; }
+    .btn-quiet { height: 36px; padding: 0 12px; background: #fff; color: #3f3f46; border: 1px solid #e4e4e7; }
+    .btn-quiet:hover { border-color: #d4d4d8; }
+    .btn-quiet[aria-pressed="true"] { background: #18181b; border-color: #18181b; color: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); }
+    .btn-quiet[aria-pressed="true"] img { filter: brightness(0) invert(1); }
+    .btn:disabled, .btn-quiet:disabled { opacity: 0.5; pointer-events: none; }
+    .switch { position: relative; display: inline-flex; width: 44px; height: 24px; flex-shrink: 0; cursor: pointer; }
+    .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .switch .track { position: absolute; inset: 0; border-radius: 999px; background: #e4e4e7; transition: background-color 150ms ease; }
+    .switch .knob {
+      position: absolute; left: 2px; top: 2px; width: 20px; height: 20px; border-radius: 999px; background: #fff;
+      box-shadow: 0 1px 3px rgb(0 0 0 / 0.1), 0 1px 2px rgb(0 0 0 / 0.06), 0 0 0 1px #e4e4e7;
+      transition: transform 150ms ease;
+    }
+    .switch input:checked ~ .track { background: #10b981; }
+    .switch input:checked ~ .knob { transform: translateX(20px); }
+    #add-status:empty, #accounts-status:empty, #meridian-error:empty {
+      position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+    }
+    /* The add-account hint goes once a provider is picked. */
+    #add-card:has([aria-pressed="true"]) #add-hint { display: none; }
+    /* Status dot in front of the Meridian status; green when settings.ts marks it reachable. */
+    #meridian-status::before {
+      content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 999px;
+      background: #a1a1aa; vertical-align: 1px;
+    }
+    #meridian-status.text-emerald-600::before { background: #10b981; }
   </style>
 </head>
 <body class="text-zinc-900 antialiased min-h-screen scrollbar-thin">
@@ -49,28 +107,129 @@
 
   <main class="max-w-lg mx-auto px-6 py-5 space-y-5">
 
-    <!-- Providers -->
+    <!-- Accounts -->
     <section class="space-y-2">
       <div class="flex items-center gap-2">
         <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="m12 2 8 4-8 4-8-4 8-4z"/><path d="m4 14 8 4 8-4"/><path d="m4 10 8 4 8-4"/>
         </svg>
-        <h2 class="text-sm font-semibold tracking-tight">Providers</h2>
+        <h2 class="text-sm font-semibold tracking-tight">Accounts</h2>
       </div>
-      <p class="text-xs text-zinc-500 -mt-1 ml-6">Rows shown in the tray popover.</p>
-      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm divide-y divide-zinc-100" id="providers"></div>
+      <p class="text-xs text-zinc-500 -mt-1 ml-6">Rows shown in the tray popover, in this order. Drag to reorder, use the pencil to rename. The star drives the tray icon number + ring.</p>
+      <div id="accounts" class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm divide-y divide-zinc-100"></div>
+      <p id="accounts-status" class="text-[11px] text-red-600 ml-6" role="status" aria-live="polite"></p>
     </section>
 
-    <!-- Primary -->
+    <!-- Add account -->
     <section class="space-y-2">
       <div class="flex items-center gap-2">
         <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/>
         </svg>
-        <h2 class="text-sm font-semibold tracking-tight">Primary provider</h2>
+        <h2 class="text-sm font-semibold tracking-tight">Add account</h2>
       </div>
-      <p class="text-xs text-zinc-500 -mt-1 ml-6">Drives the tray icon number + ring.</p>
-      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-2 flex flex-wrap gap-2" id="primary"></div>
+      <div id="add-card" class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-5 space-y-4">
+        <div id="add-provider" class="grid grid-cols-3 gap-2" role="group" aria-label="Provider">
+          <button type="button" class="btn-quiet" data-provider="claude" aria-pressed="false"><img src="assets/claude-symbol.svg" alt="" class="w-4 h-4">Claude</button>
+          <button type="button" class="btn-quiet" data-provider="codex" aria-pressed="false"><img src="assets/openai-symbol.svg" alt="" class="w-4 h-4">Codex</button>
+          <button type="button" class="btn-quiet" data-provider="copilot" aria-pressed="false"><img src="assets/copilot-symbol.svg" alt="" class="w-4 h-4">Copilot</button>
+        </div>
+        <p id="add-hint" class="text-xs text-zinc-500">Pick where the account signs in.</p>
+
+        <div id="add-claude" class="hidden space-y-3">
+          <p class="text-xs text-zinc-500 leading-relaxed">Meridian profiles appear on their own. This signs in to Claude directly: the browser opens, and the last page shows a code to paste here.</p>
+          <div class="space-y-1.5">
+            <label for="claude-label" class="text-xs font-medium text-zinc-700">Account name</label>
+            <div class="flex gap-2">
+              <input id="claude-label" class="field flex-1 min-w-0" placeholder="For example Work">
+              <button id="claude-start" type="button" class="btn">Open sign-in page</button>
+            </div>
+          </div>
+          <div id="claude-step2" class="hidden space-y-1.5">
+            <label for="claude-code" class="text-xs font-medium text-zinc-700">Code from the last page</label>
+            <div class="flex gap-2">
+              <input id="claude-code" class="field flex-1 min-w-0 font-mono" placeholder="Paste the code" autocomplete="off">
+              <button id="claude-finish" type="button" class="btn">Add</button>
+            </div>
+            <input id="claude-url" class="field w-full !text-xs" readonly aria-label="Sign-in page address, if the browser did not open">
+          </div>
+        </div>
+
+        <div id="add-codex" class="hidden space-y-3">
+          <p class="text-xs text-zinc-500 leading-relaxed">The browser opens on the ChatGPT sign-in page. After signing in, the account shows up here.</p>
+          <div class="space-y-1.5">
+            <label for="codex-label" class="text-xs font-medium text-zinc-700">Account name</label>
+            <div class="flex gap-2">
+              <input id="codex-label" class="field flex-1 min-w-0" placeholder="For example Personal">
+              <button id="codex-start" type="button" class="btn">Sign in with browser</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="add-copilot" class="hidden space-y-3">
+          <div class="flex gap-2 items-end">
+            <div class="w-32 space-y-1.5">
+              <label for="copilot-label" class="text-xs font-medium text-zinc-700">Account name</label>
+              <input id="copilot-label" class="field w-full" placeholder="Work">
+            </div>
+            <div class="flex-1 min-w-0 space-y-1.5">
+              <label for="copilot-token" class="text-xs font-medium text-zinc-700">GitHub token</label>
+              <input id="copilot-token" type="password" class="field w-full font-mono" placeholder="gho_... or ghp_..." autocomplete="off">
+            </div>
+            <button id="copilot-save" type="button" class="btn">Add</button>
+          </div>
+          <p class="text-[11px] text-zinc-500 leading-relaxed">Token with Copilot access, for example from <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">gh auth token</code>. Stored as plain text in the settings file.</p>
+          <div class="flex items-center justify-between gap-3 pt-3 border-t border-zinc-100">
+            <span class="text-xs text-zinc-500">Or copy a login from OpenCode</span>
+            <button id="copilot-import-load" type="button" class="btn-quiet">Show OpenCode logins</button>
+          </div>
+          <div id="copilot-import-list" class="space-y-2"></div>
+        </div>
+
+        <p id="add-status" class="text-[11px] text-zinc-500" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- Meridian -->
+    <section class="space-y-2">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01"/><path d="M6 17h.01"/>
+        </svg>
+        <h2 class="text-sm font-semibold tracking-tight">Meridian</h2>
+      </div>
+      <p class="text-xs text-zinc-500 -mt-1 ml-6">Claude profiles from a local Meridian.</p>
+      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-5 space-y-3">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-0.5">
+            <div class="text-sm font-medium">Use Meridian</div>
+            <div class="text-[11px] text-zinc-500">Off: Meridian is not asked, and its accounts are removed. On adds them back.</div>
+          </div>
+          <label class="switch">
+            <input id="meridian-enabled" type="checkbox" aria-label="Use Meridian">
+            <span class="track"></span>
+            <span class="knob"></span>
+          </label>
+        </div>
+        <div id="meridian-fields" class="space-y-3 pt-3 border-t border-zinc-100">
+        <div class="space-y-1.5">
+          <label for="meridian-url" class="text-xs font-medium text-zinc-700">Address</label>
+          <input id="meridian-url" class="field w-full font-mono" placeholder="http://127.0.0.1:3456">
+        </div>
+        <div class="space-y-1.5">
+          <label for="meridian-key" class="text-xs font-medium text-zinc-700">API key</label>
+          <input id="meridian-key" type="password" class="field w-full font-mono" autocomplete="off">
+        </div>
+        <div class="flex items-center gap-2 pt-1">
+          <span id="meridian-status" class="text-xs text-zinc-500"></span>
+          <div class="ml-auto flex items-center gap-2 shrink-0">
+            <button id="meridian-clear-key" type="button" class="hidden h-9 px-3 rounded-lg text-xs font-medium text-zinc-500 hover:text-red-600 hover:bg-red-50">Remove key</button>
+            <button id="meridian-save" type="button" class="btn">Save</button>
+          </div>
+        </div>
+        </div>
+        <p id="meridian-error" class="text-[11px] text-red-600" role="status" aria-live="polite"></p>
+      </div>
     </section>
 
     <!-- Behavior (interval + icon style) -->
@@ -84,49 +243,12 @@
       <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-5 grid grid-cols-2 gap-5">
         <div class="space-y-1.5">
           <label for="interval" class="text-xs font-medium text-zinc-700">Poll interval</label>
-          <select id="interval" class="w-full h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"></select>
+          <select id="interval" class="field w-full"></select>
         </div>
         <div class="space-y-1.5">
           <label for="icon-style" class="text-xs font-medium text-zinc-700">Icon style</label>
-          <select id="icon-style" class="w-full h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"></select>
+          <select id="icon-style" class="field w-full"></select>
         </div>
-      </div>
-    </section>
-
-    <!-- Copilot token -->
-    <section class="space-y-2">
-      <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-        </svg>
-        <h2 class="text-sm font-semibold tracking-tight">Copilot</h2>
-      </div>
-      <p class="text-xs text-zinc-500 -mt-1 ml-6">
-        Personal access token with Copilot access. Stored as plain text in the shared settings file.
-      </p>
-      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-5 space-y-3">
-        <div class="flex gap-2">
-          <input
-            id="copilot-token"
-            type="password"
-            placeholder="ghp_... or github_pat_..."
-            class="flex-1 h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-mono shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
-          />
-          <button
-            id="save-copilot"
-            class="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white shadow-sm hover:bg-zinc-800 active:bg-black focus:outline-none focus:ring-2 focus:ring-zinc-400 transition"
-          >Save</button>
-        </div>
-        <div class="flex items-center gap-2 text-xs">
-          <span class="inline-flex items-center gap-1.5">
-            <span id="copilot-dot" class="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
-            <span class="text-zinc-500">Status:</span>
-            <span id="copilot-status" class="font-medium">unknown</span>
-          </span>
-        </div>
-        <p class="text-[11px] text-zinc-500 leading-relaxed">
-          Tip: <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">gh auth login --scopes read:user</code> then <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">gh auth token</code>.
-        </p>
       </div>
     </section>
 
@@ -140,14 +262,14 @@
       </div>
       <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-4">
         <div class="flex items-start justify-between gap-4">
-          <div class="space-y-0.5">
+          <div class="space-y-0.5 min-w-0">
             <div class="text-sm font-medium">Start with Windows</div>
-            <div class="text-[11px] text-zinc-500">Writes <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono text-[10px]">HKCU\Software\Microsoft\Windows\CurrentVersion\Run</code></div>
+            <div class="text-[11px] text-zinc-500">Writes <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono text-[10px] break-all">HKCU\Software\Microsoft\Windows\CurrentVersion\Run</code></div>
           </div>
-          <label class="relative inline-flex h-6 w-11 cursor-pointer items-center shrink-0">
-            <input id="autostart" type="checkbox" class="peer sr-only">
-            <span class="absolute h-full w-full rounded-full bg-zinc-200 peer-checked:bg-emerald-500 transition-colors"></span>
-            <span class="absolute h-5 w-5 translate-x-0.5 rounded-full bg-white shadow ring-1 ring-zinc-200 transition-transform peer-checked:translate-x-[22px]"></span>
+          <label class="switch">
+            <input id="autostart" type="checkbox" aria-label="Start with Windows">
+            <span class="track"></span>
+            <span class="knob"></span>
           </label>
         </div>
       </div>
@@ -167,10 +289,10 @@
             <div class="text-sm font-medium">Developer mode</div>
             <div class="text-[11px] text-zinc-500">Reveals "simulate state" + "icon style" submenus in tray right-click.</div>
           </div>
-          <label class="relative inline-flex h-6 w-11 cursor-pointer items-center shrink-0">
-            <input id="dev-mode" type="checkbox" class="peer sr-only">
-            <span class="absolute h-full w-full rounded-full bg-zinc-200 peer-checked:bg-emerald-500 transition-colors"></span>
-            <span class="absolute h-5 w-5 translate-x-0.5 rounded-full bg-white shadow ring-1 ring-zinc-200 transition-transform peer-checked:translate-x-[22px]"></span>
+          <label class="switch">
+            <input id="dev-mode" type="checkbox" aria-label="Developer mode">
+            <span class="track"></span>
+            <span class="knob"></span>
           </label>
         </div>
       </div>
@@ -183,8 +305,8 @@
           <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
         </svg>
         <div>
-          <div class="font-medium text-zinc-700 mb-0.5">Data source: OAuth API</div>
-          Claude reads <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">~/.claude/.credentials.json</code>. Codex reads <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">~/.codex/auth.json</code>. PTY scrape kept only as last-resort fallback.
+          <div class="font-medium text-zinc-700 mb-0.5">Data sources</div>
+          Claude from Meridian or a direct sign-in, Codex from a browser sign-in, Copilot from a GitHub token. Tokens are stored as plain text in <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">%APPDATA%\ai-plan-usage\settings.json</code>.
         </div>
       </div>
     </section>

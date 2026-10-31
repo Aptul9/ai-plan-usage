@@ -5,8 +5,6 @@ node_modules/
 /popover.js.map
 /settings.js
 /settings.js.map
-/icon-renderer.js
-/icon-renderer.js.map
 
 # editor + OS
 .vscode/

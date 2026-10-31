@@ -1,6 +1,6 @@
 # Indicator coloring
 
-The tray icon number, the popover ring, and the popover number are colored based on usage pace, not raw percentage. The rule answers one question: is current usage on track to comfortably reach the next reset, or burning faster than expected?
+The tray icon number and the popover ring arc are colored based on usage pace, not raw percentage. The popover number uses the text color, for contrast in both themes. The rule answers one question: is current usage on track to comfortably reach the next reset, or burning faster than expected?
 
 ## What each color means
 
@@ -83,11 +83,10 @@ If `resets_at` is missing for a window, the indicator falls back to the previous
 
 ## Tuning
 
-Parameters live in code, in three places that must be kept in sync (Rust and TypeScript). To adjust:
+Parameters live in code, in two places that must be kept in sync (Rust and TypeScript). To adjust:
 
 - `apps/tauri/src-tauri/src/color.rs` -> `PARAMS_SESSION`, `PARAMS_WEEKLY`.
 - `apps/ui/src/popover.ts` -> `PARAMS_SESSION`, `PARAMS_WEEKLY`.
-- `apps/electron/src/main.ts` -> `PARAMS_SESSION`, `PARAMS_WEEKLY`.
 
 Window total lengths are also constants in the same files (`SESSION_5H_*`, `WEEKLY_7D_*`).
 

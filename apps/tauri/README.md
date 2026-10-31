@@ -10,7 +10,7 @@ Tauri implementation of `ai-plan-usage`.
 
 ## Run
 
-One-time shared UI setup:
+One-time UI setup:
 
 ```powershell
 cd apps/ui
@@ -35,9 +35,9 @@ Output binary:
 apps/tauri/src-tauri/target/release/ai-plan-usage.exe
 ```
 
-## Shared pieces
+## Outside the crate
 
-- `%APPDATA%\ai-plan-usage\settings.json` is shared with Electron.
+- Settings live in `%APPDATA%\ai-plan-usage\settings.json`.
 - UI source lives in `apps/ui/` and is copied into `apps/tauri/ui-dist/` by `sync-ui.cjs`.
 - App identity icons are generated from `apps/ui/icons/` into `src-tauri/icons/`.
 
@@ -52,8 +52,13 @@ apps/tauri/src-tauri/target/release/ai-plan-usage.exe
 - `main.rs` - entrypoint
 - `lib.rs` - Tauri setup
 - `state.rs` - app state and serde types
-- `settings_store.rs` - shared settings loader/saver
+- `accounts.rs` - accounts, their credentials, and the public view sent to the webviews
+- `settings_store.rs` - settings loader/saver, v1 to v2 migration
 - `providers/` - Claude, Codex, Copilot fetchers
+- `meridian.rs` - Claude usage from a local Meridian
+- `oauth.rs` - Claude (PKCE, pasted code) and Codex (PKCE, localhost redirect) sign-ins
+- `opencode_import.rs` - Copilot logins read from OpenCode's store
+- `color.rs` - pace-aware colors for the tray icon
 - `icon.rs` - tray icon rendering
 - `tray.rs` - tray/menu behavior
 - `popover.rs` - popover window behavior

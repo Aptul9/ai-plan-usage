@@ -1,19 +1,13 @@
-// Global ambient types shared by Electron shell and browser-side UI.
+// Global ambient types for the Tauri webviews.
 
 declare global {
-  type ProviderId = 'claude' | 'codex' | 'copilot'
+  type Provider = 'claude' | 'codex' | 'copilot'
+
+  type Source = 'meridian' | 'oauth' | 'token'
 
   type IconStyle = 'solid' | 'number' | 'ring' | 'ring+number' | 'bar'
 
-  type ErrorKind =
-    | 'not-authenticated'
-    | 'token-expired'
-    | 'refresh-failed'
-    | 'server-error'
-    | 'network-error'
-    | 'bad-credentials'
-    | 'rate-limited'
-    | 'unknown'
+  type ErrorKind = 'signed-out' | 'offline' | 'rate-limited' | 'upstream' | 'not-authenticated'
 
   interface UsageBlock {
     usedPct: number | null
@@ -38,11 +32,12 @@ declare global {
     error: SnapshotError | null
   }
 
-  interface ProviderEntry {
-    id: ProviderId
+  interface Account {
+    id: string
+    provider: Provider
+    source: Source
     label: string
     enabled: boolean
-    available: boolean
   }
 
   interface PollIntervalOption {
@@ -50,68 +45,66 @@ declare global {
     ms: number
   }
 
-  interface State {
+  interface MeridianStatus {
+    reachable: boolean
+    profiles: number
+    checkedAt: string | null
+  }
+
+  interface PublicState {
     fetchedAt: string
     iconStyle: IconStyle
     session: UsageBlock
     weekly: UsageBlock
     error: SnapshotError | null
-    providers: ProviderEntry[]
-    primaryProvider: ProviderId
+    accounts: Account[]
+    primary: string
     pollIntervalMs: number
-    dataSource: string
-    copilotToken: string | null
     devMode: boolean
-    snapshots: Record<ProviderId, ProviderSnapshot>
+    snapshots: Record<string, ProviderSnapshot>
+    meridian: { url: string; hasApiKey: boolean; enabled: boolean }
+    meridianStatus: MeridianStatus
   }
 
-  type PublicState = Omit<State, 'copilotToken'>
-
-  interface IconPayload {
-    error: SnapshotError | null
-    session: { pct: number | null; color: string }
-    weekly: { pct: number | null; color: string }
-  }
-
-  interface SettingsBundle {
-    providers: ProviderEntry[]
-    primaryProvider: ProviderId
-    pollIntervalMs: number
-    iconStyle: IconStyle
-    dataSource: string
+  interface SettingsBundle extends PublicState {
     intervals: PollIntervalOption[]
     iconStyles: IconStyle[]
-    devMode: boolean
   }
 
-  interface CopilotStatus {
-    hasToken: boolean
-    encryptionAvailable: boolean
+  interface OpenCodeLogin {
+    id: string
+    label: string
   }
 
   interface MockAPI {
     getSnapshot(): Promise<PublicState>
     quit(): Promise<void>
+    openSettings(): Promise<void>
     getAutostart(): Promise<boolean>
     setAutostart(on: boolean): Promise<boolean>
     getSettings(): Promise<SettingsBundle>
-    setProviderEnabled(
-      id: ProviderId,
-      on: boolean
-    ): Promise<{ providers: ProviderEntry[]; primaryProvider: ProviderId }>
-    setPrimary(id: ProviderId): Promise<ProviderId>
+    setPrimary(id: string): Promise<string>
     setInterval(ms: number): Promise<number>
     setIconStyle(style: IconStyle): Promise<IconStyle>
-    getCopilotStatus(): Promise<CopilotStatus>
-    setCopilotToken(token: string): Promise<boolean>
     setDevMode(on: boolean): Promise<boolean>
+    setAccountEnabled(id: string, on: boolean): Promise<void>
+    renameAccount(id: string, label: string): Promise<void>
+    moveAccount(id: string, to: number): Promise<void>
+    removeAccount(id: string): Promise<void>
+    setMeridian(url: string, apiKey: string | null): Promise<void>
+    setMeridianEnabled(on: boolean): Promise<void>
+    claudeLoginStart(): Promise<string>
+    claudeLoginFinish(code: string, label: string): Promise<string>
+    codexLogin(label: string): Promise<string>
+    copilotAddToken(token: string, label: string): Promise<string>
+    copilotImportList(): Promise<OpenCodeLogin[]>
+    copilotImport(id: string, label: string): Promise<string>
     resize(w: number, h: number): Promise<void>
     onUpdate(cb: (s: PublicState) => void): void
   }
 
   interface Window {
     mock: MockAPI
-    renderIcon?: (style: IconStyle, payload: IconPayload) => string
   }
 }
 

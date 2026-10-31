@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   windows:
-    name: Windows EXEs
+    name: Windows EXE
     runs-on: windows-latest
 
     env:
@@ -33,15 +33,10 @@ jobs:
           cache: npm
           cache-dependency-path: |
             apps/ui/package-lock.json
-            apps/electron/package-lock.json
             apps/tauri/package-lock.json
 
       - name: Install shared UI dependencies
         working-directory: apps/ui
-        run: npm ci
-
-      - name: Install Electron dependencies
-        working-directory: apps/electron
         run: npm ci
 
       - name: Install Tauri JavaScript CLI
@@ -62,9 +57,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Build Electron portable EXE
-        run: npm --prefix apps/electron run package
-
       - name: Build Tauri EXE
         run: npm --prefix apps/tauri run build
 
@@ -81,14 +73,6 @@ jobs:
             throw "Tauri EXE not found: $tauriExe"
           }
           Copy-Item -Path $tauriExe -Destination "artifacts/ai-plan-usage-tauri-$($tauriConfig.version)-windows-x64.exe" -Force
-
-          $electronExe = Get-ChildItem -Path apps/electron/dist-packaged -Filter '*.exe' -File |
-            Sort-Object Name |
-            Select-Object -First 1
-          if (-not $electronExe) {
-            throw 'Electron EXE not found under apps/electron/dist-packaged'
-          }
-          Copy-Item -Path $electronExe.FullName -Destination "artifacts/$($electronExe.Name)" -Force
 
           Get-ChildItem -Path artifacts -Filter '*.exe' -File |
             Sort-Object Name |

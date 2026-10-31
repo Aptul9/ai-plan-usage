@@ -20,7 +20,7 @@ fn last_tray_rect() -> Option<Rect> {
 
 /// True when the system cursor is currently over (or within a small margin of)
 /// the tray icon. Used by the popover's blur handler to differentiate a
-/// tray-click-induced focus loss (cursor on tray, ignore — the tray click
+/// tray-click-induced focus loss (cursor on tray, ignore: the tray click
 /// handler owns visibility) from a user clicking anywhere else (hide popup).
 pub fn cursor_over_tray(app: &AppHandle) -> bool {
     let Ok(cursor) = app.cursor_position() else {

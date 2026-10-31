@@ -1,6 +1,12 @@
 const CIRCUMFERENCE = 2 * Math.PI * 42
 
-const LOGOS: Record<ProviderId, string> = {
+const PROVIDER_NAMES: Record<Provider, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  copilot: 'Copilot',
+}
+
+const LOGOS: Record<Provider, string> = {
   claude: 'assets/claude-symbol.svg',
   codex: 'assets/openai-symbol.svg',
   copilot: 'assets/copilot-symbol.svg',
@@ -12,7 +18,7 @@ interface WidgetSlot {
   kind: 'ring' | 'overage'
 }
 
-const ROW_LAYOUTS: Record<ProviderId, WidgetSlot[]> = {
+const ROW_LAYOUTS: Record<Provider, WidgetSlot[]> = {
   claude: [
     { label: 'SESSION', key: 'session', kind: 'ring' },
     { label: 'WEEK', key: 'weekly', kind: 'ring' },
@@ -30,14 +36,15 @@ const ROW_LAYOUTS: Record<ProviderId, WidgetSlot[]> = {
 const $ = (id: string): HTMLElement | null => document.getElementById(id)
 
 interface ErrorView {
-  id: ProviderId
+  id: string
   label: string
   error: SnapshotError
 }
 
 let errorPanelOpen = false
-let selectedErrorProvider: ProviderId | null = null
+let selectedErrorProvider: string | null = null
 let latestErrors: ErrorView[] = []
+let lastPanelKey = ''
 
 function fmtDuration(ms: number): string {
   if (ms <= 0) return '0m'
@@ -148,7 +155,7 @@ function updateWidget(
   if (errored || pct == null) {
     arc.style.strokeDashoffset = String(CIRCUMFERENCE)
     arc.style.stroke = '#bbb'
-    num.textContent = errored ? '!' : '—'
+    num.textContent = errored ? '!' : '--'
     num.style.color = '#888'
     reset.textContent = ''
     return
@@ -191,30 +198,40 @@ function updateOverageWidget(
       ? fmtDuration(new Date(block.resetsAt).getTime() - Date.now())
       : ''
   } else {
-    used.textContent = '—'
+    used.textContent = '--'
     of.textContent = ''
     main.style.color = '#888'
     reset.textContent = ''
   }
 }
 
-function buildProviderRow(id: ProviderId, label: string): HTMLDivElement {
+function accountName(a: Account): string {
+  return `${PROVIDER_NAMES[a.provider]} · ${a.label}`
+}
+
+function buildAccountRow(a: Account): HTMLDivElement {
   const row = document.createElement('div')
   row.className = 'provider-row'
-  row.dataset.provider = id
+  row.dataset.account = a.id
+  row.dataset.provider = a.provider
 
+  const ident = document.createElement('div')
+  ident.className = 'ident'
   const img = document.createElement('img')
   img.className = 'logo'
-  img.src = LOGOS[id] || ''
-  img.alt = label
-  row.appendChild(img)
+  img.src = LOGOS[a.provider] || ''
+  img.alt = PROVIDER_NAMES[a.provider]
+  ident.appendChild(img)
+  const name = document.createElement('span')
+  name.className = 'acct'
+  name.textContent = a.label
+  ident.title = accountName(a)
+  ident.appendChild(name)
+  row.appendChild(ident)
 
-  const layout = ROW_LAYOUTS[id] || ROW_LAYOUTS.claude
-  for (const slot of layout) {
-    if (slot.kind === 'overage') row.appendChild(buildOverageWidget(slot.label))
-    else row.appendChild(buildWidget(slot.label))
+  for (const slot of ROW_LAYOUTS[a.provider] || ROW_LAYOUTS.claude) {
+    row.appendChild(slot.kind === 'overage' ? buildOverageWidget(slot.label) : buildWidget(slot.label))
   }
-
   return row
 }
 
@@ -231,11 +248,11 @@ function formatTimestamp(iso: string | undefined): string | null {
 }
 
 function collectErrors(s: PublicState): ErrorView[] {
-  return (s.providers || [])
-    .filter((p) => p.enabled)
-    .map((p) => {
-      const snap = s.snapshots && s.snapshots[p.id]
-      return snap && snap.error ? { id: p.id, label: p.label, error: snap.error } : null
+  return (s.accounts || [])
+    .filter((a) => a.enabled)
+    .map((a) => {
+      const snap = s.snapshots && s.snapshots[a.id]
+      return snap && snap.error ? { id: a.id, label: accountName(a), error: snap.error } : null
     })
     .filter(Boolean) as ErrorView[]
 }
@@ -253,16 +270,22 @@ function renderErrorPanel(): void {
   const chip = $('chip') as HTMLButtonElement | null
   if (!panel) return
 
+  const open = errorPanelOpen && latestErrors.length > 0
+  if (open && !latestErrors.some((e) => e.id === selectedErrorProvider)) {
+    selectedErrorProvider = latestErrors[0].id
+  }
+  // Rebuilt only when the content changes: the 1 s tick would otherwise replace
+  // a button under the pointer and drop keyboard focus.
+  const key = open ? JSON.stringify([selectedErrorProvider, latestErrors]) : 'closed'
+  if (key === lastPanelKey) return
+  lastPanelKey = key
+
   panel.innerHTML = ''
-  if (!errorPanelOpen || latestErrors.length === 0) {
+  if (!open) {
     panel.className = 'error-panel hidden'
     chip?.setAttribute('aria-expanded', 'false')
     requestAnimationFrame(reportSize)
     return
-  }
-
-  if (!selectedErrorProvider || !latestErrors.some((e) => e.id === selectedErrorProvider)) {
-    selectedErrorProvider = latestErrors[0].id
   }
 
   const ordered = [...latestErrors].sort((a, b) => {
@@ -295,6 +318,15 @@ function renderErrorPanel(): void {
     ].filter(Boolean)
     if (meta.length > 0) appendText(wrap, 'error-meta', meta.join(' · '))
 
+    if (item.error.kind === 'signed-out') {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'error-action'
+      btn.textContent = 'Open Settings'
+      btn.addEventListener('click', () => void window.mock.openSettings())
+      wrap.appendChild(btn)
+    }
+
     panel.appendChild(wrap)
   }
 
@@ -305,10 +337,16 @@ function rebuild(s: PublicState): void {
   const root = $('providers')
   if (!root) return
   root.innerHTML = ''
-  for (const p of s.providers) {
-    if (!p.enabled) continue
-    root.appendChild(buildProviderRow(p.id, p.label))
+  const shown = (s.accounts || []).filter((a) => a.enabled)
+  if (shown.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'empty'
+    empty.textContent = (s.accounts || []).length === 0
+      ? 'No accounts yet. Right-click the tray icon, then Settings, to add one.'
+      : 'All accounts are turned off. Turn one on in Settings.'
+    root.appendChild(empty)
   }
+  for (const a of shown) root.appendChild(buildAccountRow(a))
   render(s)
 }
 
@@ -320,14 +358,15 @@ function render(s: PublicState): void {
   }
   let firstErrMsg = latestErrors[0]?.error.message || null
   for (const row of Array.from(document.querySelectorAll<HTMLDivElement>('.provider-row'))) {
-    const id = row.dataset.provider as ProviderId
+    const id = row.dataset.account
+    const provider = row.dataset.provider as Provider
     const snap = s.snapshots && s.snapshots[id]
     if (!snap) continue
     const errored = !!snap.error
     row.classList.toggle('err-state', errored)
     row.title = errored ? snap.error!.message : ''
     const widgets = row.querySelectorAll('.widget')
-    const layout = ROW_LAYOUTS[id] || ROW_LAYOUTS.claude
+    const layout = ROW_LAYOUTS[provider] || ROW_LAYOUTS.claude
     layout.forEach((slot, i) => {
       const block: UsageBlock = (snap as any)[slot.key] || { usedPct: null, resetsAt: null }
       const widget = widgets[i]
@@ -383,7 +422,18 @@ function rebuildAndResize(s: PublicState): void {
 }
 
 let current: PublicState | null = null
-let lastProvIds = ''
+let lastRowsKey = ''
+
+// Rows are rebuilt when the shown accounts, their order or their names change,
+// and when the last account goes away (the empty hint changes wording).
+function rowsKey(s: PublicState): string {
+  const all = s.accounts || []
+  if (all.length === 0) return '#none'
+  return all
+    .filter((a) => a.enabled)
+    .map((a) => `${a.id}=${a.label}`)
+    .join('|')
+}
 
 const chipEl = $('chip') as HTMLButtonElement | null
 if (chipEl) {
@@ -403,21 +453,15 @@ document.addEventListener('keydown', (event) => {
 
 window.mock.getSnapshot().then((s) => {
   current = s
-  lastProvIds = (s.providers || [])
-    .filter((p) => p.enabled)
-    .map((p) => p.id)
-    .join(',')
+  lastRowsKey = rowsKey(s)
   rebuildAndResize(s)
 })
 
 window.mock.onUpdate((s) => {
   current = s
-  const ids = (s.providers || [])
-    .filter((p) => p.enabled)
-    .map((p) => p.id)
-    .join(',')
-  if (ids !== lastProvIds) {
-    lastProvIds = ids
+  const key = rowsKey(s)
+  if (key !== lastRowsKey) {
+    lastRowsKey = key
     rebuildAndResize(s)
   } else {
     render(s)

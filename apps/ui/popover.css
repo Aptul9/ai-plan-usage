@@ -37,6 +37,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* The Rust side clamps the window at 600 px; more rows scroll. */
+  max-height: 560px;
+  overflow-y: auto;
 }
 
 .provider-row {
@@ -49,6 +52,29 @@ body {
   width: 32px;
   height: 32px;
   flex-shrink: 0;
+}
+.ident {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 56px;
+  flex-shrink: 0;
+}
+.acct {
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  font-weight: 600;
+  color: #555;
+}
+.empty {
+  max-width: 220px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #666;
 }
 
 .widget {
@@ -187,4 +213,21 @@ body {
   margin-top: 4px;
   font-size: 9px;
   color: #666;
+}
+.error-action {
+  margin-top: 6px;
+  padding: 2px 6px;
+  border: 1px solid #e5e5e5;
+  border-radius: 3px;
+  background: #fff;
+  color: #222;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.error-action:hover { background: #f0f0f0; }
+.error-action:focus-visible {
+  outline: 2px solid #991b1b;
+  outline-offset: 2px;
 }

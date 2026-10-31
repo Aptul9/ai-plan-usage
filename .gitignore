@@ -1,4 +1,4 @@
-# node + electron build artifacts (per-subproject .gitignore handles details)
+# node build artifacts (per-subproject .gitignore handles details)
 node_modules/
 yarn.lock
 pnpm-lock.yaml
