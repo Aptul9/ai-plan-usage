@@ -74,7 +74,7 @@ async fn fetch_inner(
                 current = new.clone();
                 *rotated = Some(new);
             }
-            Err(detail) => return refresh_failed(SIGN_IN_AGAIN, detail),
+            Err(detail) => return refresh_failed("Codex", SIGN_IN_AGAIN, detail),
         }
     }
     let mut resp = match request(&client, &current).await {
@@ -93,7 +93,7 @@ async fn fetch_inner(
                     Err(e) => return FetchResult::err(format!("Codex network: {e}"), "offline"),
                 };
             }
-            Err(detail) => return refresh_failed(SIGN_IN_AGAIN, detail),
+            Err(detail) => return refresh_failed("Codex", SIGN_IN_AGAIN, detail),
         }
     }
     let status = resp.status();

@@ -265,7 +265,7 @@ async fn fetch_inner(
                 set_retry_at(id, retry_at).await;
                 return rate_limited_result(retry_at, "token refresh endpoint");
             }
-            RefreshOutcome::Terminal(detail) => return refresh_failed(SIGN_IN_AGAIN, detail),
+            RefreshOutcome::Terminal(detail) => return refresh_failed("Claude", SIGN_IN_AGAIN, detail),
         }
     }
 
@@ -294,7 +294,7 @@ async fn fetch_inner(
                 set_retry_at(id, retry_at).await;
                 return rate_limited_result(retry_at, "token refresh endpoint");
             }
-            RefreshOutcome::Terminal(detail) => return refresh_failed(SIGN_IN_AGAIN, detail),
+            RefreshOutcome::Terminal(detail) => return refresh_failed("Claude", SIGN_IN_AGAIN, detail),
         }
     }
 

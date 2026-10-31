@@ -85,18 +85,26 @@ impl FetchResult {
 /// A failed token refresh: offline when no answer came back, rate-limited on
 /// 429, upstream on 5xx, otherwise the sign-in is gone. `detail` is
 /// `network: ...`, `HTTP <code>: ...` (oauth.rs) or `refresh HTTP <code>: ...`
-/// (claude.rs).
-pub fn refresh_failed(message: &str, detail: String) -> FetchResult {
+/// (claude.rs). Only `signed-out` uses the caller's sign-in-again text.
+pub fn refresh_failed(provider: &str, sign_in_again: &str, detail: String) -> FetchResult {
     let status = detail
         .trim_start_matches("refresh ")
         .strip_prefix("HTTP ")
         .and_then(|rest| rest.get(..3))
         .and_then(|code| code.parse::<u16>().ok());
-    let kind = match status {
-        _ if detail.starts_with("network:") => "offline",
-        Some(429) => "rate-limited",
-        Some(500..=599) => "upstream",
-        _ => "signed-out",
+    let (kind, message) = match status {
+        _ if detail.starts_with("network:") => {
+            ("offline", format!("{provider} unreachable. Retrying next poll."))
+        }
+        Some(429) => (
+            "rate-limited",
+            format!("{provider} token refresh is rate limited. Retrying later."),
+        ),
+        Some(500..=599) => (
+            "upstream",
+            format!("{provider} sign-in service error. Retrying next poll."),
+        ),
+        _ => ("signed-out", sign_in_again.to_string()),
     };
     FetchResult::err_with_detail(message, kind, Some(detail), None::<String>)
 }
