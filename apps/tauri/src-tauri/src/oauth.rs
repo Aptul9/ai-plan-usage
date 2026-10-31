@@ -15,9 +15,10 @@ pub const CLAUDE_TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
 // The usage endpoint needs user:profile. If the authorize page rejects it on
 // its own, use "user:profile user:inference".
 const CLAUDE_SCOPE: &str = "user:profile";
-// Anthropic's Cloudflare edge 1010-blocks automation User-Agents on the token
-// endpoint, so every request must look like the CLI.
-pub const CLAUDE_CODE_UA: &str = "claude-code/2.1.0";
+// Claude Code's own User-Agent. Anthropic answers any other one on the token
+// endpoint with HTTP 429 "Rate limited", even for a request it would reject
+// anyway (checked 2026-10-31: "claude-code/2.1.0" got 429, this got 400).
+pub const CLAUDE_CODE_UA: &str = "claude-cli/2.1.302 (external, cli)";
 
 // OpenCode packages/core/src/plugin/provider/openai.ts, v2.0.32.
 const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
