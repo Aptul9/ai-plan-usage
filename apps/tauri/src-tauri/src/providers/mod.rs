@@ -4,8 +4,23 @@ pub mod copilot;
 
 use crate::accounts::{Account, OauthCreds, Provider, Source};
 use crate::meridian::{self, MeridianConfig, Profile};
-use crate::state::{ProviderSnapshot, SnapshotError, UsageBlock};
+use crate::settings_store;
+use crate::state::{AppState, ProviderSnapshot, SnapshotError, UsageBlock};
 use futures::future::join_all;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+pub type SharedState = Arc<Mutex<AppState>>;
+
+/// Saves rotated tokens before the new access token is used: the old refresh
+/// token is spent, so a quit later in the round must not lose the new pair.
+pub async fn save_rotated(state: &SharedState, id: &str, creds: &OauthCreds) {
+    let mut s = state.lock().await;
+    if let Some(acc) = s.accounts.iter_mut().find(|a| a.id == id) {
+        acc.oauth = Some(creds.clone());
+        settings_store::persist(&s);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct FetchResult {
@@ -67,10 +82,22 @@ impl FetchResult {
     }
 }
 
-/// A failed token refresh: offline when no answer came back, otherwise the
-/// sign-in is gone.
+/// A failed token refresh: offline when no answer came back, rate-limited on
+/// 429, upstream on 5xx, otherwise the sign-in is gone. `detail` is
+/// `network: ...`, `HTTP <code>: ...` (oauth.rs) or `refresh HTTP <code>: ...`
+/// (claude.rs).
 pub fn refresh_failed(message: &str, detail: String) -> FetchResult {
-    let kind = if detail.starts_with("network:") { "offline" } else { "signed-out" };
+    let status = detail
+        .trim_start_matches("refresh ")
+        .strip_prefix("HTTP ")
+        .and_then(|rest| rest.get(..3))
+        .and_then(|code| code.parse::<u16>().ok());
+    let kind = match status {
+        _ if detail.starts_with("network:") => "offline",
+        Some(429) => "rate-limited",
+        Some(500..=599) => "upstream",
+        _ => "signed-out",
+    };
     FetchResult::err_with_detail(message, kind, Some(detail), None::<String>)
 }
 
@@ -81,14 +108,18 @@ pub struct FetchOutput {
     pub meridian: Option<Vec<Profile>>,
 }
 
-pub async fn fetch_all(accounts: Vec<Account>, meridian_cfg: MeridianConfig) -> FetchOutput {
+pub async fn fetch_all(
+    accounts: Vec<Account>,
+    meridian_cfg: MeridianConfig,
+    state: &SharedState,
+) -> FetchOutput {
     let own = accounts
         .into_iter()
         .filter(|a| a.enabled && a.source != Source::Meridian)
         .map(|a| async move {
             let res = match (a.provider, a.oauth.as_ref(), a.token.as_deref()) {
-                (Provider::Claude, Some(c), _) => claude::fetch(&a.id, c).await,
-                (Provider::Codex, Some(c), _) => codex::fetch(c).await,
+                (Provider::Claude, Some(c), _) => claude::fetch(&a.id, c, state).await,
+                (Provider::Codex, Some(c), _) => codex::fetch(&a.id, c, state).await,
                 (Provider::Copilot, _, Some(t)) => copilot::fetch(t).await,
                 _ => FetchResult::err("Not signed in. Open Settings.", "signed-out"),
             };

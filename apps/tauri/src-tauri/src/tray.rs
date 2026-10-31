@@ -76,7 +76,7 @@ fn build_menu(app: &AppHandle, state: &AppState) -> tauri::Result<Menu<tauri::Wr
         let dev_icon = Submenu::with_id_and_items(
             app,
             "dev_icon",
-            &format!("Dev: icon style (now: {})", state.icon_style),
+            format!("Dev: icon style (now: {})", state.icon_style),
             true,
             &style_refs,
         )?;
@@ -200,7 +200,7 @@ fn apply_dev_profile(app: AppHandle, state: AppStateMutex, profile: DevProfile) 
                 DevProfile::Error => {
                     let err = crate::state::SnapshotError {
                         message: "Not authenticated (dev)".into(),
-                        kind: "not-authenticated".into(),
+                        kind: "signed-out".into(),
                         detail: Some("This is the simulated dev error from the tray menu.".into()),
                         occurred_at: Some(chrono::Utc::now().to_rfc3339()),
                         retry_at: None,

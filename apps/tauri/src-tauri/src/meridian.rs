@@ -172,5 +172,13 @@ mod tests {
         assert_eq!(offline.error.unwrap().kind, "offline");
         let gone = crate::providers::refresh_failed("x", "HTTP 400: invalid_grant".into());
         assert_eq!(gone.error.unwrap().kind, "signed-out");
+        let limited = crate::providers::refresh_failed("x", "HTTP 429: slow down".into());
+        assert_eq!(limited.error.unwrap().kind, "rate-limited");
+        let down = crate::providers::refresh_failed("x", "HTTP 503: unavailable".into());
+        assert_eq!(down.error.unwrap().kind, "upstream");
+        let claude_down = crate::providers::refresh_failed("x", "refresh HTTP 502: bad gateway".into());
+        assert_eq!(claude_down.error.unwrap().kind, "upstream");
+        let claude_gone = crate::providers::refresh_failed("x", "refresh HTTP 401: x".into());
+        assert_eq!(claude_gone.error.unwrap().kind, "signed-out");
     }
 }

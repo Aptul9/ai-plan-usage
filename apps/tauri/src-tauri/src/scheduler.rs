@@ -5,11 +5,14 @@ use crate::settings_store;
 use crate::state::{AppState, MeridianStatus};
 use crate::tray;
 use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
 static FETCH_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+// Set when run_once found a round already running.
+static RERUN: AtomicBool = AtomicBool::new(false);
 
 pub fn start(app: AppHandle, state: Arc<Mutex<AppState>>) {
     let app_clone = app.clone();
@@ -43,14 +46,24 @@ pub fn start(app: AppHandle, state: Arc<Mutex<AppState>>) {
 
 pub async fn run_once(app: AppHandle, state: Arc<Mutex<AppState>>) {
     let Ok(_fetch_guard) = FETCH_LOCK.try_lock() else {
+        // A round is running: it runs once more when it ends.
+        RERUN.store(true, Ordering::SeqCst);
         return;
     };
+    loop {
+        round(&app, &state).await;
+        if !RERUN.swap(false, Ordering::SeqCst) {
+            break;
+        }
+    }
+}
 
+async fn round(app: &AppHandle, state: &Arc<Mutex<AppState>>) {
     let (list, meridian_cfg) = {
         let s = state.lock().await;
         (s.accounts.clone(), s.meridian.clone())
     };
-    let out = providers::fetch_all(list, meridian_cfg).await;
+    let out = providers::fetch_all(list, meridian_cfg, state).await;
 
     let mut s = state.lock().await;
     let mut dirty = false;
@@ -99,5 +112,5 @@ pub async fn run_once(app: AppHandle, state: Arc<Mutex<AppState>>) {
         settings_store::persist(&s);
     }
     let _ = app.emit("snapshot-updated", s.public_state());
-    tray::refresh_icon(&app, &s);
+    tray::refresh_icon(app, &s);
 }

@@ -2,7 +2,7 @@ use crate::accounts::{self, Account, Provider, Source};
 use crate::meridian::MeridianConfig;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const SETTINGS_VERSION: u32 = 2;
 
@@ -110,21 +110,48 @@ fn apply(state: &mut AppState, p: Persist) {
     state.primary = accounts::normalize_primary(&state.accounts, &p.primary);
 }
 
+/// Copies a settings file this build cannot use next to it, so the first save
+/// of defaults does not destroy the only copy of its tokens.
+fn keep_unreadable(path: &Path, why: &str) {
+    let backup = path.with_file_name(format!(
+        "settings.unreadable-{}.json",
+        chrono::Utc::now().timestamp_millis()
+    ));
+    match std::fs::copy(path, &backup) {
+        Ok(_) => eprintln!("settings: {why}; kept a copy at {}", backup.display()),
+        Err(e) => eprintln!("settings: {why}; copying it aside failed: {e}"),
+    }
+}
+
+/// The settings to load and whether the file must be rewritten. Only a
+/// missing file falls back to the legacy one.
+fn read_settings(path: &Path, legacy: &Path) -> Option<(Persist, bool)> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let raw = std::fs::read_to_string(legacy).ok()?;
+            return parse(&raw).map(|(p, _)| (p, true));
+        }
+        Err(e) => {
+            keep_unreadable(path, &format!("cannot read {}: {e}", path.display()));
+            return None;
+        }
+    };
+    let parsed = parse(&raw);
+    if parsed.is_none() {
+        keep_unreadable(path, &format!("{} is not usable by this build", path.display()));
+    }
+    parsed
+}
+
 pub fn load_or_default() -> AppState {
     let mut state = AppState::defaults();
-    let (raw, legacy) = match std::fs::read_to_string(settings_path()) {
-        Ok(raw) => (raw, false),
-        Err(_) => match std::fs::read_to_string(legacy_settings_path()) {
-            Ok(raw) => (raw, true),
-            Err(_) => return state,
-        },
-    };
-    let Some((persisted, rewrite)) = parse(&raw) else {
+    let Some((persisted, rewrite)) = read_settings(&settings_path(), &legacy_settings_path()) else {
         return state;
     };
     apply(&mut state, persisted);
     state.ensure_snapshots();
-    if rewrite || legacy {
+    if rewrite {
         persist(&state);
     }
     state
@@ -140,18 +167,15 @@ pub fn persist(state: &AppState) {
         icon_style: Some(state.icon_style.clone()),
         poll_interval_ms: Some(state.poll_interval_ms),
     };
-    if std::fs::create_dir_all(shared_dir()).is_err() {
-        return;
-    }
     let path = settings_path();
     let tmp = path.with_extension("json.tmp");
-    let Ok(serialized) = serde_json::to_string_pretty(&payload) else {
-        return;
-    };
-    if std::fs::write(&tmp, serialized).is_err() {
-        return;
+    let saved = std::fs::create_dir_all(shared_dir())
+        .and_then(|_| serde_json::to_string_pretty(&payload).map_err(std::io::Error::other))
+        .and_then(|text| std::fs::write(&tmp, text))
+        .and_then(|_| std::fs::rename(&tmp, &path));
+    if let Err(e) = saved {
+        eprintln!("settings: saving {} failed: {e}", path.display());
     }
-    let _ = std::fs::rename(&tmp, &path);
 }
 
 #[cfg(test)]
@@ -200,5 +224,30 @@ mod tests {
     #[test]
     fn newer_version_is_left_alone() {
         assert!(parse(r#"{"settingsVersion":3,"accounts":[]}"#).is_none());
+    }
+
+    #[test]
+    fn unusable_file_is_copied_aside_and_legacy_ignored() {
+        let dir = std::env::temp_dir().join(format!("ai-plan-usage-test-{}", std::process::id()));
+        let path = dir.join("settings.json");
+        let legacy = dir.join("legacy.json");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(read_settings(&path, &legacy).is_none(), "nothing to load");
+        for raw in ["{not json", r#"{"settingsVersion":3,"accounts":[]}"#] {
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&path, raw).unwrap();
+            std::fs::write(&legacy, r#"{"settingsVersion":1}"#).unwrap();
+            assert!(read_settings(&path, &legacy).is_none(), "legacy must not replace {raw}");
+            let copies: Vec<_> = std::fs::read_dir(&dir)
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_name().to_string_lossy().starts_with("settings.unreadable-"))
+                .collect();
+            assert_eq!(copies.len(), 1);
+            assert_eq!(std::fs::read_to_string(copies[0].path()).unwrap(), raw);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

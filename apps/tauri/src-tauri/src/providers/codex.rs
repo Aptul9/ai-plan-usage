@@ -1,6 +1,6 @@
 use crate::accounts::OauthCreds;
 use crate::oauth;
-use crate::providers::{refresh_failed, FetchResult};
+use crate::providers::{refresh_failed, save_rotated, FetchResult, SharedState};
 use crate::state::UsageBlock;
 use chrono::{TimeZone, Utc};
 use serde::Deserialize;
@@ -47,13 +47,18 @@ async fn request(
     req.send().await
 }
 
-pub async fn fetch(creds: &OauthCreds) -> FetchResult {
+pub async fn fetch(id: &str, creds: &OauthCreds, state: &SharedState) -> FetchResult {
     let mut rotated = None;
-    let result = fetch_inner(creds, &mut rotated).await;
+    let result = fetch_inner(id, creds, state, &mut rotated).await;
     result.with_rotated(rotated)
 }
 
-async fn fetch_inner(creds: &OauthCreds, rotated: &mut Option<OauthCreds>) -> FetchResult {
+async fn fetch_inner(
+    id: &str,
+    creds: &OauthCreds,
+    state: &SharedState,
+    rotated: &mut Option<OauthCreds>,
+) -> FetchResult {
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()
@@ -65,6 +70,7 @@ async fn fetch_inner(creds: &OauthCreds, rotated: &mut Option<OauthCreds>) -> Fe
     if current.expires_at - Utc::now().timestamp_millis() < REFRESH_SKEW_MS {
         match oauth::codex_refresh(&current).await {
             Ok(new) => {
+                save_rotated(state, id, &new).await;
                 current = new.clone();
                 *rotated = Some(new);
             }
@@ -79,6 +85,7 @@ async fn fetch_inner(creds: &OauthCreds, rotated: &mut Option<OauthCreds>) -> Fe
     if resp.status().as_u16() == 401 && rotated.is_none() {
         match oauth::codex_refresh(&current).await {
             Ok(new) => {
+                save_rotated(state, id, &new).await;
                 current = new.clone();
                 *rotated = Some(new);
                 resp = match request(&client, &current).await {

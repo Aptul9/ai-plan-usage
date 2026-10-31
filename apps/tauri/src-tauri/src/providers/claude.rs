@@ -1,6 +1,6 @@
 use crate::accounts::OauthCreds;
 use crate::oauth::{TokenResponse, CLAUDE_CLIENT_ID, CLAUDE_CODE_UA, CLAUDE_TOKEN_URL};
-use crate::providers::{refresh_failed, FetchResult};
+use crate::providers::{refresh_failed, save_rotated, FetchResult, SharedState};
 use crate::state::UsageBlock;
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
@@ -220,15 +220,16 @@ fn rate_limited_result(retry_at: Option<DateTime<Utc>>, source: &str) -> FetchRe
     )
 }
 
-pub async fn fetch(id: &str, creds: &OauthCreds) -> FetchResult {
+pub async fn fetch(id: &str, creds: &OauthCreds, state: &SharedState) -> FetchResult {
     let mut rotated = None;
-    let result = fetch_inner(id, creds, &mut rotated).await;
+    let result = fetch_inner(id, creds, state, &mut rotated).await;
     result.with_rotated(rotated)
 }
 
 async fn fetch_inner(
     id: &str,
     creds: &OauthCreds,
+    state: &SharedState,
     rotated: &mut Option<OauthCreds>,
 ) -> FetchResult {
     if let Some(retry_at) = current_retry_at(id).await {
@@ -255,6 +256,7 @@ async fn fetch_inner(
     if token_expired(Some(creds.expires_at), now_ms()) {
         match try_refresh(&client, creds).await {
             RefreshOutcome::Refreshed(new) => {
+                save_rotated(state, id, &new).await;
                 token = new.access.clone();
                 *rotated = Some(new);
                 set_retry_at(id, None).await;
@@ -277,6 +279,7 @@ async fn fetch_inner(
     if resp.status().as_u16() == 401 && rotated.is_none() {
         match try_refresh(&client, creds).await {
             RefreshOutcome::Refreshed(new) => {
+                save_rotated(state, id, &new).await;
                 token = new.access.clone();
                 *rotated = Some(new);
                 set_retry_at(id, None).await;
