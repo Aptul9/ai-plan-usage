@@ -26,7 +26,6 @@ let cfg: SettingsBundle | null = null
 let dragging = false
 let addProvider: Provider | null = null
 let codexRun = 0
-let codexTimer = 0
 let meridianDirty = false
 
 function errText(e: unknown): string {
@@ -301,33 +300,6 @@ function wireMeridian(): void {
   )
 }
 
-function stopCodexTimer(): void {
-  window.clearInterval(codexTimer)
-  codexTimer = 0
-}
-
-// Ticks "Code expires in m:ss" under the device code until 0, a newer run, or the end of the flow.
-function startCodexTimer(secs: number, run: number): void {
-  stopCodexTimer()
-  const el = byId('codex-expiry')
-  // No usable expiry: no countdown line rather than "NaN:NaN".
-  el?.classList.toggle('hidden', !Number.isFinite(secs))
-  if (!Number.isFinite(secs)) return
-  const end = Date.now() + secs * 1000
-  const tick = (): void => {
-    if (run !== codexRun) return stopCodexTimer()
-    const left = Math.max(0, Math.round((end - Date.now()) / 1000))
-    if (el) {
-      el.textContent = left > 0
-        ? `Code expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
-        : 'Code expired. Get a new one.'
-    }
-    if (left === 0) stopCodexTimer()
-  }
-  tick()
-  codexTimer = window.setInterval(tick, 1000)
-}
-
 function showAdd(p: Provider | null): void {
   addProvider = p
   for (const id of ['claude', 'codex', 'copilot'] as Provider[]) {
@@ -377,35 +349,17 @@ function wireAdd(): void {
     }
   }))
 
-  byId('codex-start')?.addEventListener('click', async (ev) => {
+  byId('codex-start')?.addEventListener('click', async () => {
+    // A new click replaces a sign-in still waiting for the browser.
     const run = ++codexRun
-    stopCodexTimer()
+    setAddStatus('Finish signing in in the browser…')
     try {
-      // Disabled only while the code is fetched: a new code may be requested while one waits.
-      const btn = ev.currentTarget as HTMLButtonElement
-      btn.disabled = true
-      const d = await window.mock.codexLoginStart().finally(() => {
-        btn.disabled = false
-      })
+      await window.mock.codexLogin(value('codex-label'))
       if (run !== codexRun) return
-      const code = byId('codex-code')
-      if (code) code.textContent = d.userCode
-      const url = byId('codex-url')
-      if (url) url.textContent = d.url
-      byId('codex-step2')?.classList.remove('hidden')
-      startCodexTimer(d.expiresInSecs, run)
-      setAddStatus('Waiting for approval in the browser…')
-      await window.mock.codexLoginFinish(value('codex-label'))
-      if (run !== codexRun) return
-      stopCodexTimer()
-      byId('codex-step2')?.classList.add('hidden')
       setAddStatus('Codex account added.', 'ok')
       await reload()
     } catch (e) {
-      // A newer "Get sign-in code" click owns the panel now.
       if (run !== codexRun) return
-      stopCodexTimer()
-      byId('codex-step2')?.classList.add('hidden')
       setAddStatus(errText(e), 'err')
     }
   })

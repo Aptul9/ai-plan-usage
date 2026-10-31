@@ -11,12 +11,14 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
 type AppStateMutex = Arc<Mutex<AppState>>;
 
-// OpenAI device codes expire after 15 minutes.
-const DEVICE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+// How long a browser sign-in waits for the redirect.
+const LOGIN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 /// Save, tell both windows, redraw the tray.
 fn publish(app: &AppHandle, s: &mut AppState) {
@@ -339,57 +341,95 @@ pub async fn claude_login_finish(
     Ok(add_account(&app, state.inner(), acc).await)
 }
 
-#[tauri::command]
-pub async fn codex_login_start(state: State<'_, AppStateMutex>) -> Result<Value, String> {
-    let d = oauth::codex_device_start().await?;
-    let out = json!({
-        "userCode": d.user_code,
-        "url": oauth::CODEX_DEVICE_PAGE,
-        "expiresInSecs": DEVICE_TIMEOUT.as_secs(),
-    });
-    state.lock().await.pending.codex = Some(d);
-    oauth::open_browser(oauth::CODEX_DEVICE_PAGE);
-    Ok(out)
+fn clear_codex_pending(s: &mut AppState, owner: &str) {
+    if s.pending.codex.as_deref() == Some(owner) {
+        s.pending.codex = None;
+    }
 }
 
-/// Resolves once the code is approved in the browser, or fails when a newer
-/// sign-in replaced it or it expired.
+/// The page the browser lands on after the redirect.
+fn callback_page(err: Option<&String>) -> String {
+    let body = match err {
+        None => "<h2>Signed in</h2><p>Codex is added to ai-plan-usage. You can close this tab.</p>".to_string(),
+        Some(e) => {
+            let e = e.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+            format!("<h2>Sign-in failed</h2><p>{e}</p><p>Go back to ai-plan-usage and try again.</p>")
+        }
+    };
+    let html = format!(
+        "<!doctype html><meta charset=\"utf-8\"><title>ai-plan-usage</title>         <body style=\"font-family:Segoe UI,system-ui,sans-serif;padding:40px;color:#18181b\">{body}</body>"
+    );
+    format!(
+        "HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Content-Length: {}
+Connection: close
+
+{html}",
+        html.len()
+    )
+}
+
+/// Browser sign-in: a one-shot server on a registered localhost port catches
+/// OpenAI's redirect. A newer click replaces this one, which then lets go of
+/// its port within a second.
 #[tauri::command]
-pub async fn codex_login_finish(
+pub async fn codex_login(
     app: AppHandle,
     state: State<'_, AppStateMutex>,
     label: String,
 ) -> Result<String, String> {
-    let d = state
-        .lock()
-        .await
-        .pending
-        .codex
-        .clone()
-        .ok_or("Get a sign-in code first")?;
+    let p = oauth::pkce();
+    state.lock().await.pending.codex = Some(p.state.clone());
+    let mut bound = None;
+    for port in oauth::CODEX_PORTS {
+        if let Ok(l) = TcpListener::bind(("127.0.0.1", port)).await {
+            bound = Some((l, port));
+            break;
+        }
+    }
+    let Some((listener, port)) = bound else {
+        clear_codex_pending(&mut *state.lock().await, &p.state);
+        return Err("Ports 1455 and 1457 are busy: another Codex or OpenCode sign-in is open. Close it and try again.".into());
+    };
+    let redirect = oauth::codex_redirect(port);
+    oauth::open_browser(&oauth::codex_authorize_url(&p, &redirect));
     let started = Instant::now();
     loop {
-        // Same 3 s margin OpenCode adds to the server's interval.
-        tokio::time::sleep(Duration::from_secs(d.interval_secs + 3)).await;
-        if state.lock().await.pending.codex.as_ref() != Some(&d) {
+        if state.lock().await.pending.codex.as_deref() != Some(p.state.as_str()) {
             return Err("Replaced by a newer sign-in".into());
         }
-        match oauth::codex_device_poll(&d).await {
-            Ok(Some(creds)) => {
-                state.lock().await.pending.codex = None;
-                let mut acc = Account::new(Provider::Codex, Source::Oauth, &label_or(&label, "Codex"));
-                acc.oauth = Some(creds);
-                return Ok(add_account(&app, state.inner(), acc).await);
-            }
-            Ok(None) => {}
-            // A dropped connection is retried until the code expires.
-            Err(e) if e.starts_with("network:") => {}
-            Err(e) => return Err(e),
+        if started.elapsed() > LOGIN_TIMEOUT {
+            clear_codex_pending(&mut *state.lock().await, &p.state);
+            return Err("Sign-in timed out. Try again.".into());
         }
-        if started.elapsed() > DEVICE_TIMEOUT {
-            state.lock().await.pending.codex = None;
-            return Err("Code expired. Get a new one.".into());
-        }
+        let Ok(Ok((mut sock, _))) = tokio::time::timeout(Duration::from_secs(1), listener.accept()).await else {
+            continue;
+        };
+        let mut buf = [0u8; 8192];
+        let Ok(Ok(n)) = tokio::time::timeout(Duration::from_secs(5), sock.read(&mut buf)).await else {
+            continue;
+        };
+        let req = String::from_utf8_lossy(&buf[..n]);
+        let Some(result) = oauth::callback_code(req.lines().next().unwrap_or(""), &p) else {
+            let _ = sock
+                .write_all(b"HTTP/1.1 404 Not Found
+Content-Length: 0
+Connection: close
+
+")
+                .await;
+            continue;
+        };
+        let result = match result {
+            Ok(code) => oauth::codex_exchange(&code, &redirect, &p).await,
+            Err(e) => Err(e),
+        };
+        let _ = sock.write_all(callback_page(result.as_ref().err()).as_bytes()).await;
+        clear_codex_pending(&mut *state.lock().await, &p.state);
+        let mut acc = Account::new(Provider::Codex, Source::Oauth, &label_or(&label, "Codex"));
+        acc.oauth = Some(result?);
+        return Ok(add_account(&app, state.inner(), acc).await);
     }
 }
 

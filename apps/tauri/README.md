@@ -56,7 +56,7 @@ apps/tauri/src-tauri/target/release/ai-plan-usage.exe
 - `settings_store.rs` - settings loader/saver, v1 to v2 migration
 - `providers/` - Claude, Codex, Copilot fetchers
 - `meridian.rs` - Claude usage from a local Meridian
-- `oauth.rs` - Claude (PKCE) and Codex (device code) sign-ins
+- `oauth.rs` - Claude (PKCE, pasted code) and Codex (PKCE, localhost redirect) sign-ins
 - `opencode_import.rs` - Copilot logins read from OpenCode's store
 - `color.rs` - pace-aware colors for the tray icon
 - `icon.rs` - tray icon rendering

@@ -95,8 +95,7 @@ declare global {
     setMeridianEnabled(on: boolean): Promise<void>
     claudeLoginStart(): Promise<string>
     claudeLoginFinish(code: string, label: string): Promise<string>
-    codexLoginStart(): Promise<{ userCode: string; url: string; expiresInSecs: number }>
-    codexLoginFinish(label: string): Promise<string>
+    codexLogin(label: string): Promise<string>
     copilotAddToken(token: string, label: string): Promise<string>
     copilotImportList(): Promise<OpenCodeLogin[]>
     copilotImport(id: string, label: string): Promise<string>

@@ -1,6 +1,6 @@
 use crate::accounts::{Account, Provider};
 use crate::meridian::MeridianConfig;
-use crate::oauth::{DeviceCode, Pkce};
+use crate::oauth::Pkce;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -58,7 +58,8 @@ pub struct MeridianStatus {
 #[derive(Debug, Clone, Default)]
 pub struct PendingLogins {
     pub claude_pkce: Option<Pkce>,
-    pub codex: Option<DeviceCode>,
+    /// PKCE state of the browser sign-in that owns the callback port.
+    pub codex: Option<String>,
 }
 
 #[derive(Debug, Clone)]

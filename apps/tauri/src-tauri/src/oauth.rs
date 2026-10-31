@@ -1,5 +1,5 @@
 //! The app's own sign-ins: Claude (PKCE, code pasted back from the callback
-//! page) and Codex (device code).
+//! page) and Codex (PKCE, browser redirect to a localhost callback).
 use crate::accounts::OauthCreds;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::Deserialize;
@@ -22,7 +22,6 @@ pub const CLAUDE_CODE_UA: &str = "claude-code/2.1.0";
 // OpenCode packages/core/src/plugin/provider/openai.ts, v2.0.32.
 const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CODEX_ISSUER: &str = "https://auth.openai.com";
-pub const CODEX_DEVICE_PAGE: &str = "https://auth.openai.com/codex/device";
 const UA: &str = "ai-plan-usage";
 
 /// `state` is its own random value: the verifier must never leave the app, and
@@ -124,11 +123,6 @@ fn require_refresh(c: OauthCreds) -> Result<OauthCreds, String> {
     Ok(c)
 }
 
-async fn json_body(resp: reqwest::Response) -> Result<Value, String> {
-    let text = resp.text().await.map_err(|e| format!("network: {e}"))?;
-    serde_json::from_str(&text).map_err(|e| format!("response parse: {e}"))
-}
-
 async fn token_body(resp: reqwest::Response) -> Result<TokenResponse, String> {
     let status = resp.status();
     let text = resp.text().await.map_err(|e| format!("network: {e}"))?;
@@ -159,80 +153,62 @@ pub async fn claude_exchange(pasted: &str, p: &Pkce) -> Result<OauthCreds, Strin
     require_refresh(token_body(resp).await?.into_creds("", None))
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DeviceCode {
-    pub device_auth_id: String,
-    pub user_code: String,
-    pub interval_secs: u64,
+/// Redirect for a callback server on `port`. Only these ports are registered
+/// for the Codex client (Codex CLI `codex-rs/login/src/server.rs`).
+pub const CODEX_PORTS: [u16; 2] = [1455, 1457];
+
+pub fn codex_redirect(port: u16) -> String {
+    format!("http://127.0.0.1:{port}/auth/callback")
 }
 
-pub fn parse_device_code(v: &Value) -> Option<DeviceCode> {
-    // OpenAI sends the interval as a string.
-    let interval = match v.get("interval") {
-        Some(Value::String(s)) => s.parse().ok(),
-        Some(n) => n.as_u64(),
-        None => None,
+pub fn codex_authorize_url(p: &Pkce, redirect: &str) -> String {
+    reqwest::Url::parse_with_params(
+        &format!("{CODEX_ISSUER}/oauth/authorize"),
+        &[
+            ("response_type", "code"),
+            ("client_id", CODEX_CLIENT_ID),
+            ("redirect_uri", redirect),
+            ("scope", "openid profile email offline_access"),
+            ("code_challenge", p.challenge.as_str()),
+            ("code_challenge_method", "S256"),
+            ("state", p.state.as_str()),
+            ("id_token_add_organizations", "true"),
+            ("codex_cli_simplified_flow", "true"),
+            ("originator", "codex_cli_rs"),
+        ],
+    )
+    .expect("static authorize URL")
+    .to_string()
+}
+
+/// The code from a callback request line (`GET /auth/callback?... HTTP/1.1`).
+/// None for any other path, such as the browser asking for a favicon.
+pub fn callback_code(request_line: &str, p: &Pkce) -> Option<Result<String, String>> {
+    let target = request_line.split_whitespace().nth(1)?;
+    let url = reqwest::Url::parse(&format!("http://127.0.0.1{target}")).ok()?;
+    if url.path() != "/auth/callback" {
+        return None;
     }
-    .unwrap_or(5)
-    .max(1);
-    Some(DeviceCode {
-        device_auth_id: v.get("device_auth_id")?.as_str()?.to_string(),
-        user_code: v.get("user_code")?.as_str()?.to_string(),
-        interval_secs: interval,
-    })
+    let q = |k: &str| url.query_pairs().find(|(n, _)| n == k).map(|(_, v)| v.into_owned());
+    if let Some(e) = q("error") {
+        return Some(Err(format!("Sign-in failed: {}", q("error_description").unwrap_or(e))));
+    }
+    if q("state").as_deref() != Some(p.state.as_str()) {
+        return Some(Err("This answer belongs to another sign-in. Try again.".into()));
+    }
+    Some(q("code").filter(|c| !c.is_empty()).ok_or_else(|| "Sign-in returned no code.".to_string()))
 }
 
-pub async fn codex_device_start() -> Result<DeviceCode, String> {
+pub async fn codex_exchange(code: &str, redirect: &str, p: &Pkce) -> Result<OauthCreds, String> {
     let resp = client()?
-        .post(format!("{CODEX_ISSUER}/api/accounts/deviceauth/usercode"))
-        .header("User-Agent", UA)
-        .json(&json!({ "client_id": CODEX_CLIENT_ID }))
-        .send()
-        .await
-        .map_err(|e| format!("network: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("device code HTTP {}", resp.status().as_u16()));
-    }
-    let v = json_body(resp).await?;
-    parse_device_code(&v).ok_or_else(|| "device code response malformed".to_string())
-}
-
-/// Ok(None) while the code is not approved yet.
-pub async fn codex_device_poll(d: &DeviceCode) -> Result<Option<OauthCreds>, String> {
-    let c = client()?;
-    let resp = c
-        .post(format!("{CODEX_ISSUER}/api/accounts/deviceauth/token"))
-        .header("User-Agent", UA)
-        .json(&json!({ "device_auth_id": d.device_auth_id, "user_code": d.user_code }))
-        .send()
-        .await
-        .map_err(|e| format!("network: {e}"))?;
-    let status = resp.status().as_u16();
-    if status == 403 || status == 404 {
-        return Ok(None);
-    }
-    if !(200..300).contains(&status) {
-        return Err(format!("device token HTTP {status}"));
-    }
-    let v = json_body(resp).await?;
-    let code = v
-        .get("authorization_code")
-        .and_then(Value::as_str)
-        .ok_or("no authorization_code")?;
-    let verifier = v
-        .get("code_verifier")
-        .and_then(Value::as_str)
-        .ok_or("no code_verifier")?;
-    let redirect = format!("{CODEX_ISSUER}/deviceauth/callback");
-    let resp = c
         .post(format!("{CODEX_ISSUER}/oauth/token"))
         .header("User-Agent", UA)
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", code),
-            ("redirect_uri", redirect.as_str()),
+            ("redirect_uri", redirect),
             ("client_id", CODEX_CLIENT_ID),
-            ("code_verifier", verifier),
+            ("code_verifier", p.verifier.as_str()),
         ])
         .send()
         .await
@@ -243,7 +219,7 @@ pub async fn codex_device_poll(d: &DeviceCode) -> Result<Option<OauthCreds>, Str
         .as_deref()
         .and_then(jwt_account_id)
         .or_else(|| jwt_account_id(&tokens.access_token));
-    require_refresh(tokens.into_creds("", account)).map(Some)
+    require_refresh(tokens.into_creds("", account))
 }
 
 pub async fn codex_refresh(creds: &OauthCreds) -> Result<OauthCreds, String> {
@@ -364,12 +340,35 @@ mod tests {
     }
 
     #[test]
-    fn device_code_interval_accepts_string_or_number() {
-        let a = parse_device_code(&json!({"device_auth_id": "d", "user_code": "U-1", "interval": "7"})).unwrap();
-        assert_eq!(a.interval_secs, 7);
-        let b = parse_device_code(&json!({"device_auth_id": "d", "user_code": "U-1", "interval": 0})).unwrap();
-        assert_eq!(b.interval_secs, 1);
-        assert!(parse_device_code(&json!({"user_code": "U"})).is_none());
+    fn codex_callback_checks_path_state_and_error() {
+        let p = Pkce { verifier: "v".into(), challenge: "c".into(), state: "s1".into() };
+        let line = |target: &str| format!("GET {target} HTTP/1.1");
+        assert_eq!(callback_code(&line("/favicon.ico"), &p), None);
+        assert_eq!(callback_code(&line("/auth/callback?code=abc&state=s1"), &p), Some(Ok("abc".into())));
+        assert_eq!(
+            callback_code(&line("/auth/callback?code=abc&state=other"), &p),
+            Some(Err("This answer belongs to another sign-in. Try again.".into()))
+        );
+        assert_eq!(
+            callback_code(&line("/auth/callback?error=access_denied&error_description=User%20cancelled&state=s1"), &p),
+            Some(Err("Sign-in failed: User cancelled".into()))
+        );
+        assert_eq!(
+            callback_code(&line("/auth/callback?state=s1"), &p),
+            Some(Err("Sign-in returned no code.".into()))
+        );
+    }
+
+    #[test]
+    fn codex_authorize_url_carries_pkce_and_redirect() {
+        let p = Pkce { verifier: "v".into(), challenge: "ch".into(), state: "st".into() };
+        let url = reqwest::Url::parse(&codex_authorize_url(&p, &codex_redirect(1455))).unwrap();
+        let q: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(url.path(), "/oauth/authorize");
+        assert_eq!(q["redirect_uri"], "http://127.0.0.1:1455/auth/callback");
+        assert_eq!(q["code_challenge"], "ch");
+        assert_eq!(q["state"], "st");
+        assert_eq!(q["client_id"], CODEX_CLIENT_ID);
     }
 
     #[test]

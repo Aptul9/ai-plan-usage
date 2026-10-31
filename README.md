@@ -57,7 +57,7 @@ Settings are plain and practical: add and order accounts, pick the one behind th
 - **Primary account selection** for the tray icon number and ring.
 - **Configurable refresh interval** with a 5 minute default.
 - **Several accounts per provider**, each with its own name, order and toggle.
-- **Claude from Meridian or a direct sign-in**, Codex from a device-code sign-in, Copilot from a pasted token or a login copied from OpenCode. The Claude Code and Codex CLIs are not needed.
+- **Claude from Meridian or a direct sign-in**, Codex from a browser sign-in, Copilot from a pasted token or a login copied from OpenCode. The Claude Code and Codex CLIs are not needed.
 - **Local settings** under `%APPDATA%\ai-plan-usage\`, tokens included, in plain text.
 - **Pace-aware coloring** for the tray icon and popover (see `docs/coloring.md`).
 - **No hosted backend** for your usage data.
