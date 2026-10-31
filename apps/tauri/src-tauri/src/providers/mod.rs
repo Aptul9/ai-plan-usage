@@ -126,9 +126,6 @@ pub async fn fetch_all(
         .filter(|a| a.enabled && a.source != Source::Meridian)
         .map(|a| async move {
             let res = match (a.provider, a.oauth.as_ref(), a.token.as_deref()) {
-                (Provider::Codex, _, _) if a.source == Source::Opencode => {
-                    codex::fetch_opencode(a.opencode_id()).await
-                }
                 (Provider::Claude, Some(c), _) => claude::fetch(&a.id, c, state).await,
                 (Provider::Codex, Some(c), _) => codex::fetch(&a.id, c, state).await,
                 (Provider::Copilot, _, Some(t)) => copilot::fetch(t).await,

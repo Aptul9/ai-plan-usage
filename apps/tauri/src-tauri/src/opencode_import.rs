@@ -1,6 +1,7 @@
 //! Logins from OpenCode's store (`opencode.db`, table `credential`), opened
 //! read only. GitHub device-flow tokens do not expire, so a Copilot copy is
-//! safe. The Codex login rotates, so it is read again on every poll instead.
+//! safe. A copied Codex login refreshes on its own, and a refresh spends the
+//! token OpenCode holds too: whichever side refreshes second gets signed out.
 use crate::accounts::OauthCreds;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
@@ -83,10 +84,10 @@ pub fn read_codex(conn: &Connection) -> rusqlite::Result<Vec<CodexLogin>> {
         out.push(CodexLogin {
             id,
             // OpenCode names its ChatGPT login just "OAuth".
-            label: if label.is_empty() || label == "OAuth" { "OpenCode".into() } else { label.to_string() },
+            label: if label.is_empty() || label == "OAuth" { "Codex".into() } else { label.to_string() },
             creds: OauthCreds {
                 access,
-                refresh: String::new(),
+                refresh: text("refresh").unwrap_or_default(),
                 expires_at: v.get("expires").and_then(Value::as_i64).unwrap_or(0),
                 account_id: v
                     .pointer("/metadata/accountID")
@@ -159,10 +160,9 @@ mod tests {
         let logins = read_codex(&c).unwrap();
         assert_eq!(logins.len(), 1);
         assert_eq!(logins[0].id, "o1");
-        assert_eq!(logins[0].label, "OpenCode");
+        assert_eq!(logins[0].label, "Codex");
         assert_eq!(logins[0].creds.access, "at");
-        // The refresh token stays in OpenCode.
-        assert_eq!(logins[0].creds.refresh, "");
+        assert_eq!(logins[0].creds.refresh, "rt");
         assert_eq!(logins[0].creds.expires_at, 1700);
         assert_eq!(logins[0].creds.account_id.as_deref(), Some("acc-1"));
     }

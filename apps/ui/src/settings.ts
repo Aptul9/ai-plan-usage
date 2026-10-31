@@ -8,7 +8,7 @@ const LOGO_SRC: Record<Provider, string> = {
   codex: 'assets/openai-symbol.svg',
   copilot: 'assets/copilot-symbol.svg',
 }
-const SOURCE_TAGS: Record<Source, string> = { meridian: 'Meridian', oauth: 'Sign-in', token: 'Token', opencode: 'OpenCode' }
+const SOURCE_TAGS: Record<Source, string> = { meridian: 'Meridian', oauth: 'Sign-in', token: 'Token' }
 
 const ICON_GRIP =
   '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">' +

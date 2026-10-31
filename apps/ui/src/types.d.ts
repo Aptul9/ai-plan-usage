@@ -3,7 +3,7 @@
 declare global {
   type Provider = 'claude' | 'codex' | 'copilot'
 
-  type Source = 'meridian' | 'oauth' | 'token' | 'opencode'
+  type Source = 'meridian' | 'oauth' | 'token'
 
   type IconStyle = 'solid' | 'number' | 'ring' | 'ring+number' | 'bar'
 

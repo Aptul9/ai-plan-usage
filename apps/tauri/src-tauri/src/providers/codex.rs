@@ -1,6 +1,5 @@
 use crate::accounts::OauthCreds;
 use crate::oauth;
-use crate::opencode_import;
 use crate::providers::{refresh_failed, save_rotated, FetchResult, SharedState};
 use crate::state::UsageBlock;
 use chrono::{TimeZone, Utc};
@@ -10,7 +9,6 @@ use std::time::Duration;
 // OpenCode refreshes when less than 5 minutes remain.
 const REFRESH_SKEW_MS: i64 = 5 * 60_000;
 const SIGN_IN_AGAIN: &str = "Codex sign-in expired. Sign in again in Settings.";
-const OPENCODE_EXPIRED: &str = "OpenCode's Codex login expired. Use Codex in OpenCode once to renew it.";
 
 #[derive(Debug, Deserialize)]
 struct Resp {
@@ -49,45 +47,6 @@ async fn request(
     req.send().await
 }
 
-fn client() -> Result<reqwest::Client, Box<FetchResult>> {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .map_err(|e| Box::new(FetchResult::err(format!("Codex client: {e}"), "upstream")))
-}
-
-/// Usage with the login OpenCode holds, read fresh each poll. Never refreshed
-/// here: OpenCode owns the refresh token, and spending it would sign OpenCode out.
-pub async fn fetch_opencode(cred_id: &str) -> FetchResult {
-    let id = cred_id.to_string();
-    let found = tokio::task::spawn_blocking(move || {
-        opencode_import::codex_logins().map(|l| l.into_iter().find(|l| l.id == id))
-    })
-    .await
-    .map_err(|e| e.to_string())
-    .and_then(|r| r);
-    let creds = match found {
-        Ok(Some(l)) => l.creds,
-        Ok(None) => return FetchResult::err("This Codex login is no longer in OpenCode.", "signed-out"),
-        Err(e) => return FetchResult::err(format!("OpenCode store: {e}"), "upstream"),
-    };
-    if creds.expires_at <= Utc::now().timestamp_millis() {
-        return FetchResult::err(OPENCODE_EXPIRED, "signed-out");
-    }
-    let client = match client() {
-        Ok(c) => c,
-        Err(e) => return *e,
-    };
-    let resp = match request(&client, &creds).await {
-        Ok(r) => r,
-        Err(e) => return FetchResult::err(format!("Codex network: {e}"), "offline"),
-    };
-    if resp.status().as_u16() == 401 {
-        return FetchResult::err(OPENCODE_EXPIRED, "signed-out");
-    }
-    read_usage(resp).await
-}
-
 pub async fn fetch(id: &str, creds: &OauthCreds, state: &SharedState) -> FetchResult {
     let mut rotated = None;
     let result = fetch_inner(id, creds, state, &mut rotated).await;
@@ -100,9 +59,12 @@ async fn fetch_inner(
     state: &SharedState,
     rotated: &mut Option<OauthCreds>,
 ) -> FetchResult {
-    let client = match client() {
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+    {
         Ok(c) => c,
-        Err(e) => return *e,
+        Err(e) => return FetchResult::err(format!("Codex client: {e}"), "upstream"),
     };
     let mut current = creds.clone();
     if current.expires_at - Utc::now().timestamp_millis() < REFRESH_SKEW_MS {
@@ -134,14 +96,10 @@ async fn fetch_inner(
             Err(detail) => return refresh_failed("Codex", SIGN_IN_AGAIN, detail),
         }
     }
-    if resp.status().as_u16() == 401 {
+    let status = resp.status();
+    if status.as_u16() == 401 {
         return FetchResult::err(SIGN_IN_AGAIN, "signed-out");
     }
-    read_usage(resp).await
-}
-
-async fn read_usage(resp: reqwest::Response) -> FetchResult {
-    let status = resp.status();
     if !status.is_success() {
         return FetchResult::err(format!("Codex HTTP {}", status.as_u16()), "upstream");
     }

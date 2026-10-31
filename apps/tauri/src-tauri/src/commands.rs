@@ -428,8 +428,7 @@ pub async fn codex_import_list() -> Result<Value, String> {
         .collect::<Vec<_>>()))
 }
 
-/// Adds a Codex account that reads OpenCode's login on every poll. Nothing
-/// secret is stored: the account id names the OpenCode credential.
+/// Copies OpenCode's Codex login into a normal Codex account.
 #[tauri::command]
 pub async fn codex_import(
     app: AppHandle,
@@ -442,10 +441,15 @@ pub async fn codex_import(
         .into_iter()
         .find(|l| l.id == id)
         .ok_or("That OpenCode login is gone")?;
-    let mut acc = Account::new(Provider::Codex, Source::Opencode, &label_or(&label, &login.label));
-    acc.id = format!("{}{}", accounts::OPENCODE_PREFIX, login.id);
-    if state.lock().await.accounts.iter().any(|a| a.id == acc.id) {
-        return Err("That login is already added".into());
+    let aid = login.creds.account_id.clone();
+    if aid.is_some()
+        && state.lock().await.accounts.iter().any(|a| {
+            a.provider == Provider::Codex && a.oauth.as_ref().and_then(|o| o.account_id.clone()) == aid
+        })
+    {
+        return Err("That Codex account is already added".into());
     }
+    let mut acc = Account::new(Provider::Codex, Source::Oauth, &label_or(&label, &login.label));
+    acc.oauth = Some(login.creds);
     Ok(add_account(&app, state.inner(), acc).await)
 }
