@@ -1,0 +1,37 @@
+name: ai_plan_usage
+description: "ai-plan-usage Windows tray app, Flutter build."
+publish_to: 'none'
+version: 0.0.4
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  crypto: ^3.0.8
+  desktop_multi_window: ^0.3.1
+  ffi: ^2.1.0
+  flutter_svg: ^2.3.0
+  http: ^1.6.0
+  intl: ^0.20.2
+  path: ^1.9.0
+  screen_retriever: ^0.2.2
+  sqlite3: ^3.5.2
+  tray_manager: ^0.5.3
+  window_manager: ^0.5.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: false
+  assets:
+    - assets/
+    - assets/fonts/OFL.txt
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
