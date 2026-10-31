@@ -32,22 +32,13 @@ fn read_pct(q: &Value) -> Option<f64> {
         .and_then(|v| v.as_f64())
 }
 
-pub async fn fetch(token: Option<String>) -> FetchResult {
-    let token = match token {
-        Some(t) if !t.is_empty() => t,
-        _ => {
-            return FetchResult::err(
-                "No GitHub token. Open Settings → Copilot.",
-                "not-authenticated",
-            )
-        }
-    };
+pub async fn fetch(token: &str) -> FetchResult {
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()
     {
         Ok(c) => c,
-        Err(e) => return FetchResult::err(format!("Copilot client: {e}"), "unknown"),
+        Err(e) => return FetchResult::err(format!("Copilot client: {e}"), "upstream"),
     };
     let resp = match client
         .get("https://api.github.com/copilot_internal/user")
@@ -61,21 +52,18 @@ pub async fn fetch(token: Option<String>) -> FetchResult {
         .await
     {
         Ok(r) => r,
-        Err(e) => return FetchResult::err(format!("Copilot network: {e}"), "network-error"),
+        Err(e) => return FetchResult::err(format!("Copilot network: {e}"), "offline"),
     };
     let status = resp.status();
     if status.as_u16() == 401 || status.as_u16() == 403 {
-        return FetchResult::err(
-            "GitHub token rejected. Needs Copilot access.",
-            "token-expired",
-        );
+        return FetchResult::err("GitHub token rejected. Needs Copilot access.", "signed-out");
     }
     if !status.is_success() {
-        return FetchResult::err(format!("Copilot HTTP {}", status.as_u16()), "server-error");
+        return FetchResult::err(format!("Copilot HTTP {}", status.as_u16()), "upstream");
     }
     let data: CopilotResp = match resp.json().await {
         Ok(d) => d,
-        Err(e) => return FetchResult::err(format!("Copilot parse: {e}"), "server-error"),
+        Err(e) => return FetchResult::err(format!("Copilot parse: {e}"), "upstream"),
     };
     let snaps = data
         .quota_snapshots

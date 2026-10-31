@@ -1,6 +1,4 @@
 mod accounts;
-mod claude_cli;
-mod codex_cli;
 mod color;
 mod commands;
 mod icon;
@@ -40,14 +38,23 @@ pub fn run() {
             commands::settings_get_autostart,
             commands::settings_set_autostart,
             commands::settings_get_all,
-            commands::settings_set_provider_enabled,
             commands::settings_set_primary,
             commands::settings_set_interval,
             commands::settings_set_icon_style,
-            commands::settings_get_copilot_status,
-            commands::settings_set_copilot_token,
             commands::settings_set_dev_mode,
             commands::popover_resize,
+            commands::account_set_enabled,
+            commands::account_rename,
+            commands::account_move,
+            commands::account_remove,
+            commands::meridian_set,
+            commands::claude_login_start,
+            commands::claude_login_finish,
+            commands::codex_login_start,
+            commands::codex_login_finish,
+            commands::copilot_add_token,
+            commands::copilot_import_list,
+            commands::copilot_import,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

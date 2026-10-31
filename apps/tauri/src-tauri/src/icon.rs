@@ -300,7 +300,8 @@ pub fn payload_from_state(state: &crate::state::AppState) -> IconPayload {
     if sess_pct.is_none() && week_pct.is_some() {
         sess_pct = week_pct;
     }
-    let (session_total, weekly_total) = window_totals_for(&state.primary_provider);
+    let provider = state.primary_provider().map(|p| p.as_str()).unwrap_or("claude");
+    let (session_total, weekly_total) = window_totals_for(provider);
     let now_secs = chrono::Utc::now().timestamp();
     let sess_resets = state.session.resets_at.as_deref().and_then(parse_iso_secs);
     let week_resets = state.weekly.resets_at.as_deref().and_then(parse_iso_secs);

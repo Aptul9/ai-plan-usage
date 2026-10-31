@@ -1,6 +1,9 @@
+use crate::accounts::{Account, Provider};
+use crate::meridian::MeridianConfig;
+use crate::oauth::{DeviceCode, Pkce};
 use serde::{Deserialize, Serialize};
-
-pub type ProviderId = String;
+use serde_json::json;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UsageBlock {
@@ -28,7 +31,7 @@ pub struct SnapshotError {
     pub retry_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderSnapshot {
     pub session: UsageBlock,
     pub weekly: UsageBlock,
@@ -37,134 +40,159 @@ pub struct ProviderSnapshot {
     pub error: Option<SnapshotError>,
 }
 
-impl Default for ProviderSnapshot {
-    fn default() -> Self {
-        Self {
-            session: UsageBlock::default(),
-            weekly: UsageBlock::default(),
-            plan_type: None,
-            error: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProviderEntry {
-    pub id: ProviderId,
-    pub label: String,
-    pub enabled: bool,
-    pub available: bool,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PollIntervalOption {
     pub label: String,
     pub ms: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct MeridianStatus {
+    pub reachable: bool,
+    pub profiles: usize,
+    #[serde(rename = "checkedAt")]
+    pub checked_at: Option<String>,
+}
+
+/// Sign-ins started in settings and not finished yet.
+#[derive(Debug, Clone, Default)]
+pub struct PendingLogins {
+    pub claude_pkce: Option<Pkce>,
+    pub codex: Option<DeviceCode>,
+}
+
+#[derive(Debug, Clone)]
 pub struct AppState {
-    #[serde(rename = "fetchedAt")]
     pub fetched_at: String,
-    #[serde(rename = "iconStyle")]
     pub icon_style: String,
+    /// Mirror of the primary account, read by the tray icon and tooltip.
     pub session: UsageBlock,
     pub weekly: UsageBlock,
     pub error: Option<SnapshotError>,
-    pub providers: Vec<ProviderEntry>,
-    #[serde(rename = "primaryProvider")]
-    pub primary_provider: ProviderId,
-    #[serde(rename = "pollIntervalMs")]
+    pub accounts: Vec<Account>,
+    pub primary: String,
+    pub meridian: MeridianConfig,
+    pub meridian_status: MeridianStatus,
     pub poll_interval_ms: u64,
-    #[serde(rename = "dataSource")]
-    pub data_source: String,
-    #[serde(skip_serializing)]
-    pub copilot_token: Option<String>,
-    #[serde(rename = "devMode")]
     pub dev_mode: bool,
-    pub snapshots: std::collections::BTreeMap<ProviderId, ProviderSnapshot>,
+    pub snapshots: BTreeMap<String, ProviderSnapshot>,
+    pub pending: PendingLogins,
 }
 
 impl AppState {
     pub fn defaults() -> Self {
-        let now = chrono::Utc::now().to_rfc3339();
-        let mut snapshots = std::collections::BTreeMap::new();
-        for id in ["claude", "codex", "copilot"] {
-            snapshots.insert(id.to_string(), ProviderSnapshot::default());
-        }
         Self {
-            fetched_at: now,
+            fetched_at: chrono::Utc::now().to_rfc3339(),
             icon_style: "ring+number".to_string(),
             session: UsageBlock::default(),
             weekly: UsageBlock::default(),
             error: None,
-            providers: vec![
-                ProviderEntry {
-                    id: "claude".into(),
-                    label: "Claude".into(),
-                    enabled: true,
-                    available: true,
-                },
-                ProviderEntry {
-                    id: "codex".into(),
-                    label: "Codex".into(),
-                    enabled: true,
-                    available: true,
-                },
-                ProviderEntry {
-                    id: "copilot".into(),
-                    label: "Copilot".into(),
-                    enabled: false,
-                    available: false,
-                },
-            ],
-            primary_provider: "claude".into(),
+            accounts: Vec::new(),
+            primary: String::new(),
+            meridian: MeridianConfig::default(),
+            meridian_status: MeridianStatus::default(),
             poll_interval_ms: 5 * 60_000,
-            data_source: "oauth-api".into(),
-            copilot_token: None,
             dev_mode: false,
-            snapshots,
+            snapshots: BTreeMap::new(),
+            pending: PendingLogins::default(),
         }
     }
 
+    /// Everything the webviews get. Credentials and the Meridian key stay here.
     pub fn public_state(&self) -> serde_json::Value {
-        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+        json!({
+            "fetchedAt": self.fetched_at,
+            "iconStyle": self.icon_style,
+            "session": self.session,
+            "weekly": self.weekly,
+            "error": self.error,
+            "accounts": self.accounts.iter().map(Account::public).collect::<Vec<_>>(),
+            "primary": self.primary,
+            "pollIntervalMs": self.poll_interval_ms,
+            "devMode": self.dev_mode,
+            "snapshots": self.snapshots,
+            "meridian": {
+                "url": self.meridian.url,
+                "hasApiKey": self.meridian.api_key.as_deref().is_some_and(|k| !k.is_empty()),
+            },
+            "meridianStatus": self.meridian_status,
+        })
     }
 
     pub fn mirror_primary(&mut self) {
-        if let Some(p) = self.snapshots.get(&self.primary_provider) {
-            self.session = p.session.clone();
-            self.weekly = p.weekly.clone();
-            self.error = p.error.clone();
+        match self.snapshots.get(&self.primary) {
+            Some(p) => {
+                self.session = p.session.clone();
+                self.weekly = p.weekly.clone();
+                self.error = p.error.clone();
+            }
+            None => {
+                self.session = UsageBlock::default();
+                self.weekly = UsageBlock::default();
+                self.error = None;
+            }
+        }
+    }
+
+    pub fn primary_provider(&self) -> Option<Provider> {
+        self.accounts
+            .iter()
+            .find(|a| a.id == self.primary)
+            .map(|a| a.provider)
+    }
+
+    /// One snapshot per account, none for removed ones.
+    pub fn ensure_snapshots(&mut self) {
+        let ids: BTreeSet<String> = self.accounts.iter().map(|a| a.id.clone()).collect();
+        self.snapshots.retain(|id, _| ids.contains(id));
+        for id in ids {
+            self.snapshots.entry(id).or_default();
         }
     }
 
     pub fn poll_intervals() -> Vec<PollIntervalOption> {
         vec![
-            PollIntervalOption {
-                label: "30 seconds (dev)".into(),
-                ms: 30_000,
-            },
-            PollIntervalOption {
-                label: "1 minute".into(),
-                ms: 60_000,
-            },
-            PollIntervalOption {
-                label: "5 minutes".into(),
-                ms: 5 * 60_000,
-            },
-            PollIntervalOption {
-                label: "15 minutes".into(),
-                ms: 15 * 60_000,
-            },
-            PollIntervalOption {
-                label: "30 minutes".into(),
-                ms: 30 * 60_000,
-            },
+            PollIntervalOption { label: "30 seconds (dev)".into(), ms: 30_000 },
+            PollIntervalOption { label: "1 minute".into(), ms: 60_000 },
+            PollIntervalOption { label: "5 minutes".into(), ms: 5 * 60_000 },
+            PollIntervalOption { label: "15 minutes".into(), ms: 15 * 60_000 },
+            PollIntervalOption { label: "30 minutes".into(), ms: 30 * 60_000 },
         ]
     }
 
     pub fn icon_styles() -> Vec<&'static str> {
         vec!["solid", "number", "ring", "ring+number", "bar"]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::accounts::{OauthCreds, Source};
+
+    #[test]
+    fn public_state_hides_secrets() {
+        let mut s = AppState::defaults();
+        let mut a = Account::new(Provider::Claude, Source::Oauth, "Notarify");
+        a.oauth = Some(OauthCreds {
+            access: "SECRET1".into(),
+            refresh: "SECRET2".into(),
+            expires_at: 0,
+            account_id: None,
+        });
+        s.accounts.push(a);
+        s.meridian.api_key = Some("SECRET3".into());
+        let text = s.public_state().to_string();
+        assert!(!text.contains("SECRET"));
+        assert!(text.contains("\"hasApiKey\":true"));
+    }
+
+    #[test]
+    fn snapshots_follow_accounts() {
+        let mut s = AppState::defaults();
+        s.snapshots.insert("gone".into(), ProviderSnapshot::default());
+        s.accounts.push(Account::meridian("a"));
+        s.ensure_snapshots();
+        assert_eq!(s.snapshots.keys().collect::<Vec<_>>(), vec!["meridian:a"]);
     }
 }

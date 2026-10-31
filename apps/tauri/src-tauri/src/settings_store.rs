@@ -1,39 +1,52 @@
+use crate::accounts::{self, Account, Provider, Source};
+use crate::meridian::MeridianConfig;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-const SETTINGS_VERSION: u32 = 1;
+const SETTINGS_VERSION: u32 = 2;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct PersistShape {
-    #[serde(rename = "settingsVersion", skip_serializing_if = "Option::is_none")]
-    settings_version: Option<u32>,
-    #[serde(rename = "copilotToken", skip_serializing_if = "Option::is_none")]
+/// Version 1: fixed providers, one Copilot token. Read only, for migration.
+#[derive(Debug, Default, Deserialize)]
+struct PersistV1 {
+    #[serde(rename = "copilotToken")]
     copilot_token: Option<String>,
-    #[serde(rename = "devMode", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "devMode")]
     dev_mode: Option<bool>,
-    #[serde(rename = "primaryProvider", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "primaryProvider")]
     primary_provider: Option<String>,
-    #[serde(rename = "enabledProviderIds", skip_serializing_if = "Option::is_none")]
-    enabled_provider_ids: Option<Vec<String>>,
-    #[serde(rename = "iconStyle", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "iconStyle")]
     icon_style: Option<String>,
-    #[serde(rename = "pollIntervalMs", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "pollIntervalMs")]
     poll_interval_ms: Option<u64>,
 }
 
-fn shared_dir() -> PathBuf {
-    let base = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")));
-    base.join("ai-plan-usage")
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
+struct Persist {
+    #[serde(rename = "settingsVersion")]
+    settings_version: u32,
+    #[serde(default)]
+    accounts: Vec<Account>,
+    #[serde(default)]
+    primary: String,
+    #[serde(default)]
+    meridian: MeridianConfig,
+    #[serde(rename = "devMode", default)]
+    dev_mode: bool,
+    #[serde(rename = "iconStyle", default)]
+    icon_style: Option<String>,
+    #[serde(rename = "pollIntervalMs", default)]
+    poll_interval_ms: Option<u64>,
 }
 
-fn legacy_shared_dir() -> PathBuf {
-    let base = std::env::var_os("APPDATA")
+fn appdata() -> PathBuf {
+    std::env::var_os("APPDATA")
         .map(PathBuf::from)
-        .unwrap_or_else(|| dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")));
-    base.join("claude-usage-tray")
+        .unwrap_or_else(|| dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")))
+}
+
+fn shared_dir() -> PathBuf {
+    appdata().join("ai-plan-usage")
 }
 
 fn settings_path() -> PathBuf {
@@ -41,103 +54,93 @@ fn settings_path() -> PathBuf {
 }
 
 fn legacy_settings_path() -> PathBuf {
-    legacy_shared_dir().join("settings.json")
+    appdata().join("claude-usage-tray").join("settings.json")
 }
 
-fn apply_enabled_provider_ids(state: &mut AppState, enabled_ids: &[String]) {
-    for provider in &mut state.providers {
-        provider.enabled = provider.available && enabled_ids.iter().any(|id| id == &provider.id);
+fn migrate_v1(v1: PersistV1) -> Persist {
+    let mut list = Vec::new();
+    if let Some(token) = v1.copilot_token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
+        let mut acc = Account::new(Provider::Copilot, Source::Token, "Copilot");
+        acc.token = Some(token);
+        list.push(acc);
     }
-}
-
-fn normalize_primary_provider(state: &mut AppState) {
-    let primary_ok = state
-        .providers
+    let primary = list
         .iter()
-        .any(|p| p.id == state.primary_provider && p.enabled && p.available);
-    if primary_ok {
-        return;
+        .find(|a| Some(a.provider.as_str()) == v1.primary_provider.as_deref())
+        .or(list.first())
+        .map(|a| a.id.clone())
+        .unwrap_or_default();
+    Persist {
+        settings_version: SETTINGS_VERSION,
+        accounts: list,
+        primary,
+        meridian: MeridianConfig::default(),
+        dev_mode: v1.dev_mode.unwrap_or(false),
+        icon_style: v1.icon_style,
+        poll_interval_ms: v1.poll_interval_ms,
     }
-    if let Some(first) = state.providers.iter().find(|p| p.enabled && p.available) {
-        state.primary_provider = first.id.clone();
+}
+
+/// Either layout; the bool says the file must be rewritten. A version newer
+/// than this build is left alone.
+fn parse(raw: &str) -> Option<(Persist, bool)> {
+    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
+    match value.get("settingsVersion").and_then(|v| v.as_u64()) {
+        Some(v) if v == SETTINGS_VERSION as u64 => serde_json::from_value(value).ok().map(|p| (p, false)),
+        None | Some(1) => serde_json::from_value::<PersistV1>(value)
+            .ok()
+            .map(|v1| (migrate_v1(v1), true)),
+        Some(_) => None,
     }
+}
+
+fn apply(state: &mut AppState, p: Persist) {
+    state.accounts = p.accounts;
+    state.meridian = p.meridian;
+    state.dev_mode = p.dev_mode;
+    if let Some(s) = p.icon_style.filter(|s| AppState::icon_styles().contains(&s.as_str())) {
+        state.icon_style = s;
+    }
+    if let Some(ms) = p
+        .poll_interval_ms
+        .filter(|ms| AppState::poll_intervals().iter().any(|x| x.ms == *ms))
+    {
+        state.poll_interval_ms = ms;
+    }
+    state.primary = accounts::normalize_primary(&state.accounts, &p.primary);
 }
 
 pub fn load_or_default() -> AppState {
     let mut state = AppState::defaults();
-    let path = settings_path();
-    let (raw, migrated) = match std::fs::read_to_string(&path) {
+    let (raw, legacy) = match std::fs::read_to_string(settings_path()) {
         Ok(raw) => (raw, false),
         Err(_) => match std::fs::read_to_string(legacy_settings_path()) {
             Ok(raw) => (raw, true),
             Err(_) => return state,
         },
     };
-    let Ok(parsed) = serde_json::from_str::<PersistShape>(&raw) else {
+    let Some((persisted, rewrite)) = parse(&raw) else {
         return state;
     };
-    let should_rewrite = migrated
-        || parsed.settings_version != Some(SETTINGS_VERSION)
-        || parsed.enabled_provider_ids.is_none();
-    if let Some(t) = parsed.copilot_token {
-        if !t.is_empty() {
-            state.copilot_token = Some(t);
-            if let Some(p) = state.providers.iter_mut().find(|p| p.id == "copilot") {
-                p.available = true;
-            }
-        }
-    }
-    if let Some(d) = parsed.dev_mode {
-        state.dev_mode = d;
-    }
-    if let Some(p) = parsed.primary_provider {
-        if state.providers.iter().any(|x| x.id == p) {
-            state.primary_provider = p;
-        }
-    }
-    if let Some(enabled_provider_ids) = parsed.enabled_provider_ids {
-        apply_enabled_provider_ids(&mut state, &enabled_provider_ids);
-    } else if state.copilot_token.is_some() {
-        if let Some(p) = state.providers.iter_mut().find(|p| p.id == "copilot") {
-            p.enabled = p.available;
-        }
-    }
-    if let Some(s) = parsed.icon_style {
-        if AppState::icon_styles().contains(&s.as_str()) {
-            state.icon_style = s;
-        }
-    }
-    if let Some(ms) = parsed.poll_interval_ms {
-        if AppState::poll_intervals().iter().any(|x| x.ms == ms) {
-            state.poll_interval_ms = ms;
-        }
-    }
-    normalize_primary_provider(&mut state);
-    if should_rewrite {
+    apply(&mut state, persisted);
+    state.ensure_snapshots();
+    if rewrite || legacy {
         persist(&state);
     }
     state
 }
 
 pub fn persist(state: &AppState) {
-    let payload = PersistShape {
-        settings_version: Some(SETTINGS_VERSION),
-        copilot_token: state.copilot_token.clone(),
-        dev_mode: Some(state.dev_mode),
-        primary_provider: Some(state.primary_provider.clone()),
-        enabled_provider_ids: Some(
-            state
-                .providers
-                .iter()
-                .filter(|p| p.enabled)
-                .map(|p| p.id.clone())
-                .collect(),
-        ),
+    let payload = Persist {
+        settings_version: SETTINGS_VERSION,
+        accounts: state.accounts.clone(),
+        primary: state.primary.clone(),
+        meridian: state.meridian.clone(),
+        dev_mode: state.dev_mode,
         icon_style: Some(state.icon_style.clone()),
         poll_interval_ms: Some(state.poll_interval_ms),
     };
-    let dir = shared_dir();
-    if std::fs::create_dir_all(&dir).is_err() {
+    if std::fs::create_dir_all(shared_dir()).is_err() {
         return;
     }
     let path = settings_path();
@@ -149,4 +152,53 @@ pub fn persist(state: &AppState) {
         return;
     }
     let _ = std::fs::rename(&tmp, &path);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrates_v1_copilot_token_and_keeps_prefs() {
+        let raw = r#"{"settingsVersion":1,"copilotToken":" ghp_x ","devMode":true,"primaryProvider":"copilot","enabledProviderIds":["claude","copilot"],"iconStyle":"bar","pollIntervalMs":900000}"#;
+        let (p, rewrite) = parse(raw).unwrap();
+        assert!(rewrite);
+        assert_eq!(p.settings_version, 2);
+        assert_eq!(p.accounts.len(), 1);
+        assert_eq!(p.accounts[0].provider, Provider::Copilot);
+        assert_eq!(p.accounts[0].source, Source::Token);
+        assert_eq!(p.accounts[0].token.as_deref(), Some("ghp_x"));
+        assert_eq!(p.primary, p.accounts[0].id);
+        assert!(p.dev_mode);
+        assert_eq!(p.icon_style.as_deref(), Some("bar"));
+        assert_eq!(p.poll_interval_ms, Some(900_000));
+        assert_eq!(p.meridian.url, "http://127.0.0.1:3456");
+    }
+
+    #[test]
+    fn migrates_v1_without_token_to_no_accounts() {
+        let (p, rewrite) = parse(r#"{"settingsVersion":1,"primaryProvider":"claude"}"#).unwrap();
+        assert!(rewrite);
+        assert!(p.accounts.is_empty());
+        assert_eq!(p.primary, "");
+    }
+
+    #[test]
+    fn v2_round_trips_without_rewrite() {
+        let mut acc = Account::meridian("notarify");
+        acc.label = "Notarify".into();
+        let p = Persist {
+            settings_version: 2,
+            accounts: vec![acc],
+            primary: "meridian:notarify".into(),
+            ..Default::default()
+        };
+        let raw = serde_json::to_string(&p).unwrap();
+        assert_eq!(parse(&raw), Some((p, false)));
+    }
+
+    #[test]
+    fn newer_version_is_left_alone() {
+        assert!(parse(r#"{"settingsVersion":3,"accounts":[]}"#).is_none());
+    }
 }

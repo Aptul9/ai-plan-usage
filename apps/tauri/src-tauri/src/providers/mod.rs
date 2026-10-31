@@ -2,9 +2,10 @@ pub mod claude;
 pub mod codex;
 pub mod copilot;
 
-use crate::accounts::OauthCreds;
+use crate::accounts::{Account, OauthCreds, Provider, Source};
+use crate::meridian::{self, MeridianConfig, Profile};
 use crate::state::{ProviderSnapshot, SnapshotError, UsageBlock};
-use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
+use futures::future::join_all;
 
 #[derive(Debug, Clone)]
 pub struct FetchResult {
@@ -73,37 +74,33 @@ pub fn refresh_failed(message: &str, detail: String) -> FetchResult {
     FetchResult::err_with_detail(message, kind, Some(detail), None::<String>)
 }
 
-pub async fn fetch_all(
-    copilot_token: Option<String>,
-    enabled_provider_ids: Vec<String>,
-) -> Vec<(String, FetchResult)> {
-    let enabled = |id: &str| {
-        enabled_provider_ids
-            .iter()
-            .any(|enabled_id| enabled_id == id)
+pub struct FetchOutput {
+    /// One entry per enabled account that is not a Meridian one.
+    pub results: Vec<(String, FetchResult)>,
+    /// Meridian's Claude profiles; None when it is off or unreachable.
+    pub meridian: Option<Vec<Profile>>,
+}
+
+pub async fn fetch_all(accounts: Vec<Account>, meridian_cfg: MeridianConfig) -> FetchOutput {
+    let own = accounts
+        .into_iter()
+        .filter(|a| a.enabled && a.source != Source::Meridian)
+        .map(|a| async move {
+            let res = match (a.provider, a.oauth.as_ref(), a.token.as_deref()) {
+                (Provider::Claude, Some(c), _) => claude::fetch(&a.id, c).await,
+                (Provider::Codex, Some(c), _) => codex::fetch(c).await,
+                (Provider::Copilot, _, Some(t)) => copilot::fetch(t).await,
+                _ => FetchResult::err("Not signed in. Open Settings.", "signed-out"),
+            };
+            (a.id, res)
+        });
+    let meridian_task = async {
+        if meridian_cfg.url.trim().is_empty() {
+            None
+        } else {
+            meridian::fetch(&meridian_cfg).await
+        }
     };
-    let mut tasks: FuturesUnordered<BoxFuture<'static, (String, FetchResult)>> =
-        FuturesUnordered::new();
-
-    if enabled("claude") {
-        tasks.push(Box::pin(async {
-            ("claude".to_string(), claude::fetch().await)
-        }));
-    }
-    if enabled("codex") {
-        tasks.push(Box::pin(async {
-            ("codex".to_string(), codex::fetch().await)
-        }));
-    }
-    if enabled("copilot") {
-        tasks.push(Box::pin(async move {
-            ("copilot".to_string(), copilot::fetch(copilot_token).await)
-        }));
-    }
-
-    let mut results = Vec::new();
-    while let Some(result) = tasks.next().await {
-        results.push(result);
-    }
-    results
+    let (results, meridian) = futures::join!(join_all(own), meridian_task);
+    FetchOutput { results, meridian }
 }
