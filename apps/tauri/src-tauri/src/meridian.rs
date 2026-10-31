@@ -14,9 +14,12 @@ pub struct MeridianConfig {
     pub url: String,
     #[serde(rename = "apiKey", default, skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
-    /// Off: Meridian is not asked, and its accounts are turned off with it.
+    /// Off: Meridian is not asked, and its accounts are dropped.
     #[serde(default = "on")]
     pub enabled: bool,
+    /// Profiles the user removed; not added back while Meridian stays on.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed: Vec<String>,
 }
 
 fn on() -> bool {
@@ -25,7 +28,7 @@ fn on() -> bool {
 
 impl Default for MeridianConfig {
     fn default() -> Self {
-        Self { url: DEFAULT_URL.into(), api_key: None, enabled: true }
+        Self { url: DEFAULT_URL.into(), api_key: None, enabled: true, removed: Vec::new() }
     }
 }
 

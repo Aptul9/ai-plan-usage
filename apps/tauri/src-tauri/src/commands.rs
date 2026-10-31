@@ -260,11 +260,13 @@ pub async fn account_remove(
     state: State<'_, AppStateMutex>,
     id: String,
 ) -> Result<(), String> {
-    // Meridian accounts come back on the next poll, so they are turned off instead.
-    if id.starts_with(accounts::MERIDIAN_PREFIX) {
-        return Err("Meridian accounts can only be turned off".into());
-    }
     let mut s = state.lock().await;
+    // Remembered so the next poll does not add the Meridian profile back.
+    if let Some(pid) = id.strip_prefix(accounts::MERIDIAN_PREFIX) {
+        if !s.meridian.removed.iter().any(|r| r == pid) {
+            s.meridian.removed.push(pid.to_string());
+        }
+    }
     s.accounts.retain(|a| a.id != id);
     publish(&app, &mut s);
     Ok(())
@@ -291,7 +293,8 @@ pub async fn meridian_set(
     Ok(())
 }
 
-/// Turns Meridian on or off, and its accounts with it.
+/// Turns Meridian on or off. Off drops its accounts; on adds every profile
+/// back on the next poll, removed ones included.
 #[tauri::command]
 pub async fn meridian_set_enabled(
     app: AppHandle,
@@ -301,8 +304,10 @@ pub async fn meridian_set_enabled(
     {
         let mut s = state.lock().await;
         s.meridian.enabled = on;
-        for a in s.accounts.iter_mut().filter(|a| a.source == Source::Meridian) {
-            a.enabled = on;
+        if on {
+            s.meridian.removed.clear();
+        } else {
+            s.accounts.retain(|a| a.source != Source::Meridian);
         }
         publish(&app, &mut s);
     }

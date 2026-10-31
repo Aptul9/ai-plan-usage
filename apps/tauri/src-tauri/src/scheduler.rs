@@ -1,4 +1,4 @@
-use crate::accounts;
+use crate::accounts::{self, Source};
 use crate::meridian;
 use crate::providers;
 use crate::settings_store;
@@ -73,8 +73,17 @@ async fn round(app: &AppHandle, state: &Arc<Mutex<AppState>>) {
         profiles: profiles.map_or(0, |p| p.len()),
         checked_at: Some(chrono::Utc::now().to_rfc3339()),
     };
+    if !s.meridian.enabled {
+        let before = s.accounts.len();
+        s.accounts.retain(|a| a.source != Source::Meridian);
+        dirty |= s.accounts.len() != before;
+    }
     if let Some(found) = profiles {
-        let ids: Vec<String> = found.iter().map(|p| p.id.clone()).collect();
+        let ids: Vec<String> = found
+            .iter()
+            .map(|p| p.id.clone())
+            .filter(|id| !s.meridian.removed.contains(id))
+            .collect();
         dirty |= accounts::merge_meridian(&mut s.accounts, &ids);
     }
     s.ensure_snapshots();
@@ -86,11 +95,7 @@ async fn round(app: &AppHandle, state: &Arc<Mutex<AppState>>) {
         .filter_map(|a| a.profile_id().map(|p| (a.id.clone(), p.to_string())))
         .collect();
     for (id, profile_id) in meridian_accounts {
-        let res = if s.meridian.enabled {
-            meridian::result_for(profiles, &profile_id)
-        } else {
-            providers::FetchResult::err("Meridian is off", "offline")
-        };
+        let res = meridian::result_for(profiles, &profile_id);
         if let Some(snap) = s.snapshots.get_mut(&id) {
             res.apply_to(snap);
         }

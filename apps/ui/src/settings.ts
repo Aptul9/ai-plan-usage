@@ -164,8 +164,6 @@ function accountRow(a: Account): HTMLDivElement {
   remove.innerHTML = ICON_REMOVE
   remove.setAttribute('aria-label', `Remove ${a.label}`)
   remove.dataset.role = 'remove'
-  // Meridian rows come back on the next poll, so they are turned off instead.
-  if (a.source === 'meridian') remove.classList.add('invisible')
   remove.addEventListener('click', async () => {
     if (remove.dataset.armed !== '1') {
       remove.dataset.armed = '1'
