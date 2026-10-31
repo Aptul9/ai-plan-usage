@@ -14,11 +14,18 @@ pub struct MeridianConfig {
     pub url: String,
     #[serde(rename = "apiKey", default, skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    /// Off: Meridian is not asked, and its accounts are turned off with it.
+    #[serde(default = "on")]
+    pub enabled: bool,
+}
+
+fn on() -> bool {
+    true
 }
 
 impl Default for MeridianConfig {
     fn default() -> Self {
-        Self { url: DEFAULT_URL.into(), api_key: None }
+        Self { url: DEFAULT_URL.into(), api_key: None, enabled: true }
     }
 }
 
@@ -150,6 +157,12 @@ mod tests {
         assert!(s.resets_at.as_deref().unwrap().starts_with("2026-"));
         assert_eq!(p[0].weekly.as_ref().unwrap().used_pct, Some(104.0));
         assert_eq!(p[1].error.as_deref(), Some("no_token"));
+    }
+
+    #[test]
+    fn old_config_without_enabled_stays_on() {
+        let c: MeridianConfig = serde_json::from_str(r#"{"url":"http://127.0.0.1:3456"}"#).unwrap();
+        assert!(c.enabled);
     }
 
     #[test]

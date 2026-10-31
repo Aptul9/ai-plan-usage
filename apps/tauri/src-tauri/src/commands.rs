@@ -291,6 +291,25 @@ pub async fn meridian_set(
     Ok(())
 }
 
+/// Turns Meridian on or off, and its accounts with it.
+#[tauri::command]
+pub async fn meridian_set_enabled(
+    app: AppHandle,
+    state: State<'_, AppStateMutex>,
+    on: bool,
+) -> Result<(), String> {
+    {
+        let mut s = state.lock().await;
+        s.meridian.enabled = on;
+        for a in s.accounts.iter_mut().filter(|a| a.source == Source::Meridian) {
+            a.enabled = on;
+        }
+        publish(&app, &mut s);
+    }
+    refresh_soon(&app);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn claude_login_start(state: State<'_, AppStateMutex>) -> Result<String, String> {
     let p = oauth::pkce();

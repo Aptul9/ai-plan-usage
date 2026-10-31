@@ -114,6 +114,7 @@ impl AppState {
             "meridian": {
                 "url": self.meridian.url,
                 "hasApiKey": self.meridian.api_key.as_deref().is_some_and(|k| !k.is_empty()),
+                "enabled": self.meridian.enabled,
             },
             "meridianStatus": self.meridian_status,
         })

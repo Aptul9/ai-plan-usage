@@ -86,7 +86,11 @@ async fn round(app: &AppHandle, state: &Arc<Mutex<AppState>>) {
         .filter_map(|a| a.profile_id().map(|p| (a.id.clone(), p.to_string())))
         .collect();
     for (id, profile_id) in meridian_accounts {
-        let res = meridian::result_for(profiles, &profile_id);
+        let res = if s.meridian.enabled {
+            meridian::result_for(profiles, &profile_id)
+        } else {
+            providers::FetchResult::err("Meridian is off", "offline")
+        };
         if let Some(snap) = s.snapshots.get_mut(&id) {
             res.apply_to(snap);
         }

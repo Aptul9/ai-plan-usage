@@ -210,6 +210,18 @@
       </div>
       <p class="text-xs text-zinc-500 -mt-1 ml-6">Claude profiles from a local Meridian. An empty address turns it off.</p>
       <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-5 space-y-3">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-0.5">
+            <div class="text-sm font-medium">Use Meridian</div>
+            <div class="text-[11px] text-zinc-500">Off: Meridian is not asked, and its accounts are turned off.</div>
+          </div>
+          <label class="switch">
+            <input id="meridian-enabled" type="checkbox" aria-label="Use Meridian">
+            <span class="track"></span>
+            <span class="knob"></span>
+          </label>
+        </div>
+        <div id="meridian-fields" class="space-y-3 pt-3 border-t border-zinc-100">
         <div class="space-y-1.5">
           <label for="meridian-url" class="text-xs font-medium text-zinc-700">Address</label>
           <input id="meridian-url" class="field w-full font-mono" placeholder="http://127.0.0.1:3456">
@@ -224,6 +236,7 @@
             <button id="meridian-clear-key" type="button" class="hidden h-9 px-3 rounded-lg text-xs font-medium text-zinc-500 hover:text-red-600 hover:bg-red-50">Remove key</button>
             <button id="meridian-save" type="button" class="btn">Save</button>
           </div>
+        </div>
         </div>
         <p id="meridian-error" class="text-[11px] text-red-600" role="status" aria-live="polite"></p>
       </div>

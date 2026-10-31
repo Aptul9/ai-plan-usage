@@ -252,6 +252,9 @@ function startDrag(e: PointerEvent, row: HTMLDivElement): void {
 
 function renderMeridian(): void {
   if (!cfg) return
+  const on = byId<HTMLInputElement>('meridian-enabled')
+  if (on) on.checked = cfg.meridian.enabled
+  byId('meridian-fields')?.classList.toggle('hidden', !cfg.meridian.enabled)
   const url = byId<HTMLInputElement>('meridian-url')
   if (url && !meridianDirty && document.activeElement !== url) url.value = cfg.meridian.url
   const key = byId<HTMLInputElement>('meridian-key')
@@ -269,14 +272,16 @@ function renderMeridian(): void {
     ? `, checked ${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}`
     : ''
   let text = `Not reachable${checked}`
-  if (!cfg.meridian.url) text = 'Off'
+  if (!cfg.meridian.enabled || !cfg.meridian.url) text = 'Off'
   else if (!m.checkedAt) text = 'Not checked yet'
   else if (m.reachable) text = `Reachable, ${m.profiles} Claude profile${m.profiles === 1 ? '' : 's'}${checked}`
   st.textContent = text
-  st.className = 'text-xs ' + (m.reachable && cfg.meridian.url ? 'text-emerald-600' : 'text-zinc-500')
+  st.className = 'text-xs ' + (m.reachable && cfg.meridian.enabled && cfg.meridian.url ? 'text-emerald-600' : 'text-zinc-500')
 }
 
 function wireMeridian(): void {
+  const on = byId<HTMLInputElement>('meridian-enabled')
+  on?.addEventListener('change', () => runAction('meridian-error', () => window.mock.setMeridianEnabled(on.checked)))
   // Unsaved edits in the address survive polls, focused or not.
   byId('meridian-url')?.addEventListener('input', () => {
     meridianDirty = true

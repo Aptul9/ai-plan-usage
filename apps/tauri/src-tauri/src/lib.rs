@@ -49,6 +49,7 @@ pub fn run() {
             commands::account_move,
             commands::account_remove,
             commands::meridian_set,
+            commands::meridian_set_enabled,
             commands::claude_login_start,
             commands::claude_login_finish,
             commands::codex_login_start,

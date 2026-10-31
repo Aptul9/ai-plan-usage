@@ -24,6 +24,7 @@
     moveAccount: (id, to) => invoke('account_move', { id, to }),
     removeAccount: (id) => invoke('account_remove', { id }),
     setMeridian: (url, apiKey) => invoke('meridian_set', { url, apiKey }),
+    setMeridianEnabled: (on) => invoke('meridian_set_enabled', { on }),
     claudeLoginStart: () => invoke('claude_login_start'),
     claudeLoginFinish: (code, label) => invoke('claude_login_finish', { code, label }),
     codexLoginStart: () => invoke('codex_login_start'),

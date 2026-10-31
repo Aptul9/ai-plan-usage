@@ -134,7 +134,7 @@ pub async fn fetch_all(
             (a.id, res)
         });
     let meridian_task = async {
-        if meridian_cfg.url.trim().is_empty() {
+        if !meridian_cfg.enabled || meridian_cfg.url.trim().is_empty() {
             None
         } else {
             meridian::fetch(&meridian_cfg).await

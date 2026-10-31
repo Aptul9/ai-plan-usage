@@ -62,7 +62,7 @@ declare global {
     pollIntervalMs: number
     devMode: boolean
     snapshots: Record<string, ProviderSnapshot>
-    meridian: { url: string; hasApiKey: boolean }
+    meridian: { url: string; hasApiKey: boolean; enabled: boolean }
     meridianStatus: MeridianStatus
   }
 
@@ -92,6 +92,7 @@ declare global {
     moveAccount(id: string, to: number): Promise<void>
     removeAccount(id: string): Promise<void>
     setMeridian(url: string, apiKey: string | null): Promise<void>
+    setMeridianEnabled(on: boolean): Promise<void>
     claudeLoginStart(): Promise<string>
     claudeLoginFinish(code: string, label: string): Promise<string>
     codexLoginStart(): Promise<{ userCode: string; url: string; expiresInSecs: number }>
