@@ -127,6 +127,47 @@ class AppModel extends ChangeNotifier {
 
   void _refreshSoon() => unawaited(runOnce());
 
+  /// Dev menu: fake usage, staleness or errors on every account, not saved.
+  void simulate(String profile) {
+    final s = state;
+    void setAll(double sess, double week) {
+      for (final snap in s.snapshots.values) {
+        snap.session = snap.session.withPct(sess);
+        snap.weekly = snap.weekly.withPct(week);
+      }
+    }
+
+    switch (profile) {
+      case 'dev_low':
+        setAll(45, 12);
+      case 'dev_mid':
+        setAll(85, 50);
+      case 'dev_high':
+        setAll(97, 78);
+      case 'dev_reset':
+        setAll(2, 3);
+      case 'dev_stale':
+        s.fetchedAt = DateTime.now().subtract(const Duration(minutes: 22)).toUtc().toIso8601String();
+      case 'dev_error':
+        final err = SnapshotError(
+          message: 'Not authenticated (dev)',
+          kind: 'signed-out',
+          detail: 'This is the simulated dev error from the tray menu.',
+          occurredAt: nowIso(),
+        );
+        for (final snap in s.snapshots.values) {
+          snap.error = err;
+        }
+      case 'dev_clear_error':
+        for (final snap in s.snapshots.values) {
+          snap.error = null;
+        }
+    }
+    if (profile != 'dev_stale') s.fetchedAt = nowIso();
+    s.mirrorPrimary();
+    notifyListeners();
+  }
+
   Account? _find(String id) => state.accounts.where((a) => a.id == id).firstOrNull;
 
   String _addAccount(Account account) {
