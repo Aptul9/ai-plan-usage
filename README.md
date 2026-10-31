@@ -44,7 +44,7 @@ The popover shows each enabled provider in one compact view. Claude and Codex sh
 
 ## Simple Settings
 
-Settings are plain and practical: toggle providers, choose the primary provider, set the polling interval, change the icon style, and configure Copilot access from the UI.
+Settings are plain and practical: add and order accounts, pick the one behind the tray icon, point the app at Meridian, set the polling interval and change the icon style.
 
 <p align="center">
   <img src="screenshots/settings.png" width="520" alt="ai-plan-usage settings window with provider toggles and icon options">
@@ -56,7 +56,9 @@ Settings are plain and practical: toggle providers, choose the primary provider,
 - **Provider toggles** so the popover only shows what you use.
 - **Primary provider selection** for the tray icon number and ring.
 - **Configurable refresh interval** with a 5 minute default.
-- **Local settings** under `%APPDATA%\ai-plan-usage\`.
+- **Several accounts per provider**, each with its own name, order and toggle.
+- **Claude from Meridian or a direct sign-in**, Codex from a device-code sign-in, Copilot from a pasted token or a login copied from OpenCode. The Claude Code and Codex CLIs are not needed.
+- **Local settings** under `%APPDATA%\ai-plan-usage\`, tokens included, in plain text.
 - **Pace-aware coloring** for the tray icon and popover (see `docs/coloring.md`).
 - **No hosted backend** for your usage data.
 - **No analytics dashboard** or historical reporting layer.
