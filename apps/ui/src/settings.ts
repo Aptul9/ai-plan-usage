@@ -19,6 +19,8 @@ const ICON_STAR =
   `<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="${STAR_PATH}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`
 const ICON_STAR_FILLED =
   `<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="${STAR_PATH}" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`
+const ICON_EDIT =
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M11 2.5l2.5 2.5L6 12.5H3.5V10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>'
 const ICON_REMOVE =
   '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'
 
@@ -119,12 +121,23 @@ function accountRow(a: Account): HTMLDivElement {
   text.className = 'flex-1 min-w-0 flex flex-col'
   const name = document.createElement('button')
   name.type = 'button'
-  name.className = 'name-btn self-start max-w-full h-6 rounded text-left text-sm font-medium truncate hover:underline underline-offset-2' + (a.enabled ? '' : ' text-fg-3')
+  name.className = 'name-btn min-w-0 h-6 rounded text-left text-sm font-medium truncate' + (a.enabled ? '' : ' text-fg-3')
   name.textContent = a.label
   name.title = 'Rename'
   name.dataset.role = 'name'
   name.addEventListener('click', () => startRename(row, a))
-  text.appendChild(name)
+  const pencil = document.createElement('button')
+  pencil.type = 'button'
+  pencil.className = 'flex items-center justify-center w-6 h-6 shrink-0 rounded text-fg-3 hover:text-fg hover:bg-subtle'
+  pencil.innerHTML = ICON_EDIT
+  pencil.title = 'Rename'
+  pencil.setAttribute('aria-label', `Rename ${a.label}`)
+  pencil.dataset.role = 'rename'
+  pencil.addEventListener('click', () => startRename(row, a))
+  const line = document.createElement('div')
+  line.className = 'flex items-center gap-1 min-w-0'
+  line.append(name, pencil)
+  text.appendChild(line)
   const caption = document.createElement('span')
   caption.className = 'text-xs text-fg-2 truncate'
   caption.textContent = `${NAMES[a.provider]} · ${SOURCE_TAGS[a.source]}` + (a.enabled ? '' : ' · off')
@@ -191,6 +204,7 @@ function startRename(row: HTMLDivElement, a: Account): void {
   input.className = 'flex-1 min-w-0 h-8 rounded-md border border-zinc-300 px-2 text-sm'
   input.setAttribute('aria-label', 'Account name')
   btn.replaceWith(input)
+  row.querySelector('[data-role="rename"]')?.classList.add('hidden')
   input.focus()
   input.select()
   let done = false
