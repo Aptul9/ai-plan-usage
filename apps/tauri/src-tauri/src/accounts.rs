@@ -27,6 +27,8 @@ pub enum Source {
     Meridian,
     Oauth,
     Token,
+    /// Codex login read from OpenCode on every poll, never refreshed here.
+    Opencode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,6 +57,7 @@ pub struct Account {
 }
 
 pub const MERIDIAN_PREFIX: &str = "meridian:";
+pub const OPENCODE_PREFIX: &str = "opencode:";
 
 impl Account {
     pub fn new(provider: Provider, source: Source, label: &str) -> Self {
@@ -83,6 +86,11 @@ impl Account {
 
     pub fn profile_id(&self) -> Option<&str> {
         self.id.strip_prefix(MERIDIAN_PREFIX)
+    }
+
+    /// The OpenCode credential id behind an `opencode:` account.
+    pub fn opencode_id(&self) -> &str {
+        self.id.strip_prefix(OPENCODE_PREFIX).unwrap_or(&self.id)
     }
 
     /// What the webviews may see.

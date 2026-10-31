@@ -3,7 +3,7 @@
 declare global {
   type Provider = 'claude' | 'codex' | 'copilot'
 
-  type Source = 'meridian' | 'oauth' | 'token'
+  type Source = 'meridian' | 'oauth' | 'token' | 'opencode'
 
   type IconStyle = 'solid' | 'number' | 'ring' | 'ring+number' | 'bar'
 
@@ -71,7 +71,7 @@ declare global {
     iconStyles: IconStyle[]
   }
 
-  interface CopilotLogin {
+  interface OpenCodeLogin {
     id: string
     label: string
   }
@@ -97,8 +97,10 @@ declare global {
     codexLoginStart(): Promise<{ userCode: string; url: string; expiresInSecs: number }>
     codexLoginFinish(label: string): Promise<string>
     copilotAddToken(token: string, label: string): Promise<string>
-    copilotImportList(): Promise<CopilotLogin[]>
+    copilotImportList(): Promise<OpenCodeLogin[]>
     copilotImport(id: string, label: string): Promise<string>
+    codexImportList(): Promise<OpenCodeLogin[]>
+    codexImport(id: string, label: string): Promise<string>
     resize(w: number, h: number): Promise<void>
     onUpdate(cb: (s: PublicState) => void): void
   }

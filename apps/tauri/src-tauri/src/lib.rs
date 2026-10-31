@@ -56,6 +56,8 @@ pub fn run() {
             commands::copilot_add_token,
             commands::copilot_import_list,
             commands::copilot_import,
+            commands::codex_import_list,
+            commands::codex_import,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

@@ -8,7 +8,7 @@ const LOGO_SRC: Record<Provider, string> = {
   codex: 'assets/openai-symbol.svg',
   copilot: 'assets/copilot-symbol.svg',
 }
-const SOURCE_TAGS: Record<Source, string> = { meridian: 'Meridian', oauth: 'Sign-in', token: 'Token' }
+const SOURCE_TAGS: Record<Source, string> = { meridian: 'Meridian', oauth: 'Sign-in', token: 'Token', opencode: 'OpenCode' }
 
 const ICON_GRIP =
   '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">' +
@@ -419,15 +419,24 @@ function wireAdd(): void {
     }
   }))
 
-  byId('copilot-import-load')?.addEventListener('click', (ev) => busy(ev.currentTarget as HTMLButtonElement, async () => {
-    const list = byId('copilot-import-list')
+  wireOpenCodeImport('copilot', window.mock.copilotImportList, window.mock.copilotImport)
+  wireOpenCodeImport('codex', window.mock.codexImportList, window.mock.codexImport)
+}
+
+function wireOpenCodeImport(
+  p: 'codex' | 'copilot',
+  listLogins: () => Promise<OpenCodeLogin[]>,
+  importLogin: (id: string, label: string) => Promise<string>
+): void {
+  byId(`${p}-import-load`)?.addEventListener('click', (ev) => busy(ev.currentTarget as HTMLButtonElement, async () => {
+    const list = byId(`${p}-import-list`)
     if (!list) return
     list.innerHTML = ''
     try {
-      const logins = await window.mock.copilotImportList()
+      const logins = await listLogins()
       list.innerHTML = ''
       if (logins.length === 0) {
-        setAddStatus('No Copilot logins in OpenCode.')
+        setAddStatus(`No ${NAMES[p]} logins in OpenCode.`)
         return
       }
       setAddStatus('')
@@ -435,7 +444,7 @@ function wireAdd(): void {
         const row = document.createElement('div')
         row.className = 'flex items-center gap-3 rounded-lg border border-zinc-200 bg-white pl-3 pr-1.5 py-1.5 text-sm'
         const logo = document.createElement('img')
-        logo.src = LOGO_SRC.copilot
+        logo.src = LOGO_SRC[p]
         logo.alt = ''
         logo.className = 'w-4 h-4 shrink-0'
         const name = document.createElement('span')
@@ -447,8 +456,8 @@ function wireAdd(): void {
         add.textContent = 'Add'
         add.addEventListener('click', () => busy(add, async () => {
           try {
-            await window.mock.copilotImport(l.id, l.label)
-            setAddStatus(`Copilot · ${l.label} added.`, 'ok')
+            await importLogin(l.id, l.label)
+            setAddStatus(`${NAMES[p]} · ${l.label} added.`, 'ok')
             row.remove()
             await reload()
           } catch (e) {

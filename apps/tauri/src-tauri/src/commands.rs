@@ -73,6 +73,12 @@ async fn opencode_logins() -> Result<Vec<opencode_import::CopilotLogin>, String>
         .map_err(|e| e.to_string())?
 }
 
+async fn opencode_codex_logins() -> Result<Vec<opencode_import::CodexLogin>, String> {
+    tokio::task::spawn_blocking(opencode_import::codex_logins)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn snapshot_get(state: State<'_, AppStateMutex>) -> Result<Value, String> {
     let s = state.lock().await;
@@ -410,5 +416,36 @@ pub async fn copilot_import(
     ensure_new_token(state.inner(), &login.token).await?;
     let mut acc = Account::new(Provider::Copilot, Source::Token, &label_or(&label, &login.label));
     acc.token = Some(login.token);
+    Ok(add_account(&app, state.inner(), acc).await)
+}
+
+#[tauri::command]
+pub async fn codex_import_list() -> Result<Value, String> {
+    let logins = opencode_codex_logins().await?;
+    Ok(json!(logins
+        .iter()
+        .map(|l| json!({ "id": l.id, "label": l.label }))
+        .collect::<Vec<_>>()))
+}
+
+/// Adds a Codex account that reads OpenCode's login on every poll. Nothing
+/// secret is stored: the account id names the OpenCode credential.
+#[tauri::command]
+pub async fn codex_import(
+    app: AppHandle,
+    state: State<'_, AppStateMutex>,
+    id: String,
+    label: String,
+) -> Result<String, String> {
+    let login = opencode_codex_logins()
+        .await?
+        .into_iter()
+        .find(|l| l.id == id)
+        .ok_or("That OpenCode login is gone")?;
+    let mut acc = Account::new(Provider::Codex, Source::Opencode, &label_or(&label, &login.label));
+    acc.id = format!("{}{}", accounts::OPENCODE_PREFIX, login.id);
+    if state.lock().await.accounts.iter().any(|a| a.id == acc.id) {
+        return Err("That login is already added".into());
+    }
     Ok(add_account(&app, state.inner(), acc).await)
 }
