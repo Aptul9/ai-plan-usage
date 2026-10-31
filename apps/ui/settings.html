@@ -3,189 +3,316 @@
 <head>
   <meta charset="utf-8">
   <title>Settings</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-          },
-          colors: {
-            brand: {
-              50: '#eef2ff',
-              500: '#6366f1',
-              600: '#4f46e5',
-              700: '#4338ca',
+    tailwind.config = (() => {
+      // Theme tokens are RGB triplets in :root, swapped for dark mode below.
+      const v = (name) => `rgb(var(--${name}) / <alpha-value>)`
+      return {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Segoe UI Variable Text"', '"Segoe UI Variable"', '"Segoe UI"', 'system-ui', 'sans-serif'],
+              mono: ['"Cascadia Mono"', 'Consolas', 'ui-monospace', 'monospace'],
+            },
+            colors: {
+              mica: v('mica'),
+              surface: v('surface'),
+              stroke: v('stroke'),
+              divider: v('divider'),
+              subtle: v('subtle'),
+              fg: { DEFAULT: v('fg'), 2: v('fg-2'), 3: v('fg-3') },
+              accent: v('accent'),
+              ok: v('ok'),
+              err: v('err'),
+              star: v('star'),
+              // settings.ts status lines and the drag/rename states use these names.
+              zinc: { 50: v('subtle'), 300: v('ctl-strong'), 400: v('fg-3'), 500: v('fg-2') },
+              emerald: { 600: v('ok') },
+              red: { 600: v('err') },
             },
           },
         },
-      },
-    }
+      }
+    })()
   </script>
   <style>
-    html, body { background: linear-gradient(180deg, #fafafa 0%, #f4f4f5 100%); }
-    body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-    .scrollbar-thin::-webkit-scrollbar { width: 10px; }
-    .scrollbar-thin::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
-    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #a1a1aa; background-clip: content-box; border: 2px solid transparent; }
+    :root {
+      color-scheme: light dark;
+      --mica: 243 243 243;
+      --surface: 251 251 251;
+      --stroke: 229 229 229;
+      --divider: 234 234 234;
+      --subtle: 240 240 240;
+      --ctl: 254 254 254;
+      --ctl-hover: 246 246 246;
+      --ctl-stroke: 229 229 229;
+      --ctl-strong: 139 139 139;
+      --fg: 27 27 27;
+      --fg-2: 92 92 92;
+      --fg-3: 112 112 112;
+      --accent: 0 95 184;
+      --accent-hover: 25 110 191;
+      --accent-press: 51 128 198;
+      --on-accent: 255 255 255;
+      --ok: 15 123 15;
+      --err: 196 43 28;
+      --star: 183 121 31;
+      --focus: 0 0 0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --mica: 32 32 32;
+        --surface: 43 43 43;
+        --stroke: 29 29 29;
+        --divider: 58 58 58;
+        --subtle: 50 50 50;
+        --ctl: 55 55 55;
+        --ctl-hover: 61 61 61;
+        --ctl-stroke: 64 64 64;
+        --ctl-strong: 154 154 154;
+        --fg: 255 255 255;
+        --fg-2: 207 207 207;
+        --fg-3: 168 168 168;
+        --accent: 96 205 255;
+        --accent-hover: 90 185 229;
+        --accent-press: 85 168 206;
+        --on-accent: 0 0 0;
+        --ok: 108 203 95;
+        --err: 255 153 164;
+        --star: 255 200 61;
+        --focus: 255 255 255;
+      }
+    }
+    html {
+      background: rgb(var(--mica));
+    }
+    ::-webkit-scrollbar { width: 12px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgb(var(--ctl-strong) / 0.5); border: 4px solid transparent; border-radius: 999px; background-clip: content-box; }
+    body { -webkit-font-smoothing: antialiased; }
+    :where(button, select, [role="button"], summary):focus-visible,
+    .switch input:focus-visible ~ .track {
+      outline: 2px solid rgb(var(--focus));
+      outline-offset: 2px;
+    }
+    .card { border-radius: 8px; border: 1px solid rgb(var(--stroke)); background: rgb(var(--surface)); }
+    .field, #accounts input:not([type="checkbox"]) {
+      height: 32px; border-radius: 6px; padding: 0 10px; font-size: 14px;
+      color: rgb(var(--fg)); background: rgb(var(--ctl));
+      border: 1px solid rgb(var(--ctl-stroke)); border-bottom-color: rgb(var(--ctl-strong));
+    }
+    .field.font-mono { font-size: 13px; }
+    .field::placeholder { color: rgb(var(--fg-3)); }
+    .field:hover { background: rgb(var(--ctl-hover)); }
+    .field:focus, #accounts input:not([type="checkbox"]):focus {
+      outline: none; border-color: rgb(var(--accent)); box-shadow: 0 0 0 1px rgb(var(--accent));
+    }
+    .field[readonly] { color: rgb(var(--fg-2)); }
+    .btn, .btn-quiet {
+      display: inline-flex; height: 32px; align-items: center; justify-content: center; gap: 8px;
+      border-radius: 6px; padding: 0 14px; font-size: 14px; font-weight: 500; white-space: nowrap;
+      transition: background-color 120ms ease;
+    }
+    .btn { background: rgb(var(--accent)); color: rgb(var(--on-accent)); border: 1px solid transparent; }
+    .btn:hover { background: rgb(var(--accent-hover)); }
+    .btn:active { background: rgb(var(--accent-press)); }
+    .btn-quiet {
+      background: rgb(var(--ctl)); color: rgb(var(--fg));
+      border: 1px solid rgb(var(--ctl-stroke)); border-bottom-color: rgb(var(--ctl-strong) / 0.5);
+    }
+    .btn-quiet:hover { background: rgb(var(--ctl-hover)); }
+    .btn-quiet[aria-pressed="true"] { background: rgb(var(--accent)); border-color: transparent; color: rgb(var(--on-accent)); }
+    .btn-quiet[aria-pressed="true"] img { filter: brightness(0) invert(1); }
+    @media (prefers-color-scheme: dark) {
+      .btn-quiet[aria-pressed="true"] img { filter: brightness(0); }
+    }
+    /* Windows 11 toggle switch: 40 x 20 track inside a 48 x 32 hit area. */
+    .switch { position: relative; display: inline-flex; width: 48px; height: 32px; flex-shrink: 0; cursor: pointer; }
+    .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .switch .track {
+      position: absolute; inset: 6px 4px; border-radius: 999px;
+      border: 1px solid rgb(var(--ctl-strong)); background: rgb(var(--subtle) / 0.4);
+      transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    .switch .knob {
+      position: absolute; left: 9px; top: 11px; width: 10px; height: 10px; border-radius: 999px;
+      background: rgb(var(--fg-2)); transition: transform 120ms ease, background-color 120ms ease;
+    }
+    .switch:hover .knob { transform: scale(1.2); }
+    .switch input:checked ~ .track { background: rgb(var(--accent)); border-color: rgb(var(--accent)); }
+    .switch input:checked ~ .knob { transform: translateX(20px); background: rgb(var(--on-accent)); }
+    .switch:hover input:checked ~ .knob { transform: translateX(20px) scale(1.2); }
+    #add-status:empty { display: none; }
+    /* The add-account hint goes once a provider is picked. */
+    #add-card:has([aria-pressed="true"]) #add-hint { display: none; }
+    /* Status dot in front of the Meridian status; green when settings.ts marks it reachable. */
+    #meridian-status::before {
+      content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 999px;
+      background: rgb(var(--fg-3)); vertical-align: 1px;
+    }
+    #meridian-status.text-emerald-600::before { background: rgb(var(--ok)); }
+    @media (prefers-reduced-motion: reduce) {
+      .switch .track, .switch .knob, .btn, .btn-quiet { transition: none; }
+    }
   </style>
 </head>
-<body class="text-zinc-900 antialiased min-h-screen scrollbar-thin">
+<body class="bg-mica text-fg font-sans text-sm min-h-screen">
 
-  <!-- App header bar -->
-  <header class="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-zinc-200">
-    <div class="max-w-lg mx-auto px-6 py-3 flex items-center justify-between">
+  <main class="max-w-[520px] mx-auto px-5 pt-5 pb-8 space-y-6">
+
+    <header>
+      <h1 class="text-[22px] leading-7 font-semibold">Settings</h1>
+      <p class="text-xs text-fg-2 mt-0.5">ai-plan-usage</p>
+    </header>
+
+    <section class="space-y-2">
       <div>
-        <h1 class="text-base font-semibold tracking-tight">Settings</h1>
-        <p class="text-[11px] text-zinc-500 mt-0.5">ai-plan-usage</p>
+        <h2 class="text-sm font-semibold">Accounts</h2>
+        <p class="text-xs text-fg-2 mt-0.5 leading-relaxed">Rows in the tray popover, in this order. Drag to reorder, click a name to rename. The star picks the account behind the tray icon.</p>
       </div>
-      <span class="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">local</span>
-    </div>
-  </header>
-
-  <main class="max-w-lg mx-auto px-6 py-5 space-y-5">
-
-    <!-- Providers -->
-    <section class="space-y-2">
-      <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m12 2 8 4-8 4-8-4 8-4z"/><path d="m4 14 8 4 8-4"/><path d="m4 10 8 4 8-4"/>
-        </svg>
-        <h2 class="text-sm font-semibold tracking-tight">Providers</h2>
-      </div>
-      <p class="text-xs text-zinc-500 -mt-1 ml-6">Rows shown in the tray popover.</p>
-      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm divide-y divide-zinc-100" id="providers"></div>
+      <div id="accounts" class="card divide-y divide-divider"></div>
     </section>
 
-    <!-- Primary -->
     <section class="space-y-2">
-      <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-        </svg>
-        <h2 class="text-sm font-semibold tracking-tight">Primary provider</h2>
-      </div>
-      <p class="text-xs text-zinc-500 -mt-1 ml-6">Drives the tray icon number + ring.</p>
-      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-2 flex flex-wrap gap-2" id="primary"></div>
-    </section>
+      <h2 class="text-sm font-semibold">Add account</h2>
+      <div id="add-card" class="card p-4 space-y-4">
+        <div id="add-provider" class="grid grid-cols-3 gap-2" role="group" aria-label="Provider">
+          <button type="button" class="btn-quiet" data-provider="claude" aria-pressed="false"><img src="assets/claude-symbol.svg" alt="" class="w-4 h-4">Claude</button>
+          <button type="button" class="btn-quiet" data-provider="codex" aria-pressed="false"><img src="assets/openai-symbol.svg" alt="" class="w-4 h-4 dark:invert">Codex</button>
+          <button type="button" class="btn-quiet" data-provider="copilot" aria-pressed="false"><img src="assets/copilot-symbol.svg" alt="" class="w-4 h-4 dark:invert">Copilot</button>
+        </div>
+        <p id="add-hint" class="text-xs text-fg-2">Pick where the account signs in.</p>
 
-    <!-- Behavior (interval + icon style) -->
-    <section class="space-y-2">
-      <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
-        </svg>
-        <h2 class="text-sm font-semibold tracking-tight">Behavior</h2>
-      </div>
-      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-5 grid grid-cols-2 gap-5">
-        <div class="space-y-1.5">
-          <label for="interval" class="text-xs font-medium text-zinc-700">Poll interval</label>
-          <select id="interval" class="w-full h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"></select>
-        </div>
-        <div class="space-y-1.5">
-          <label for="icon-style" class="text-xs font-medium text-zinc-700">Icon style</label>
-          <select id="icon-style" class="w-full h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"></select>
-        </div>
-      </div>
-    </section>
-
-    <!-- Copilot token -->
-    <section class="space-y-2">
-      <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-        </svg>
-        <h2 class="text-sm font-semibold tracking-tight">Copilot</h2>
-      </div>
-      <p class="text-xs text-zinc-500 -mt-1 ml-6">
-        Personal access token with Copilot access. Stored as plain text in the shared settings file.
-      </p>
-      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-5 space-y-3">
-        <div class="flex gap-2">
-          <input
-            id="copilot-token"
-            type="password"
-            placeholder="ghp_... or github_pat_..."
-            class="flex-1 h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-mono shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
-          />
-          <button
-            id="save-copilot"
-            class="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white shadow-sm hover:bg-zinc-800 active:bg-black focus:outline-none focus:ring-2 focus:ring-zinc-400 transition"
-          >Save</button>
-        </div>
-        <div class="flex items-center gap-2 text-xs">
-          <span class="inline-flex items-center gap-1.5">
-            <span id="copilot-dot" class="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
-            <span class="text-zinc-500">Status:</span>
-            <span id="copilot-status" class="font-medium">unknown</span>
-          </span>
-        </div>
-        <p class="text-[11px] text-zinc-500 leading-relaxed">
-          Tip: <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">gh auth login --scopes read:user</code> then <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">gh auth token</code>.
-        </p>
-      </div>
-    </section>
-
-    <!-- Startup -->
-    <section class="space-y-2">
-      <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>
-        </svg>
-        <h2 class="text-sm font-semibold tracking-tight">Startup</h2>
-      </div>
-      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-4">
-        <div class="flex items-start justify-between gap-4">
-          <div class="space-y-0.5">
-            <div class="text-sm font-medium">Start with Windows</div>
-            <div class="text-[11px] text-zinc-500">Writes <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono text-[10px]">HKCU\Software\Microsoft\Windows\CurrentVersion\Run</code></div>
+        <div id="add-claude" class="hidden space-y-3">
+          <p class="text-xs text-fg-2 leading-relaxed">Meridian profiles appear on their own. This signs in to Claude directly: the browser opens, and the last page shows a code to paste here.</p>
+          <div class="space-y-1">
+            <label for="claude-label" class="text-xs text-fg-2">Name</label>
+            <div class="flex gap-2">
+              <input id="claude-label" class="field flex-1 min-w-0" placeholder="For example Work" aria-label="Account name">
+              <button id="claude-start" type="button" class="btn">Open sign-in page</button>
+            </div>
           </div>
-          <label class="relative inline-flex h-6 w-11 cursor-pointer items-center shrink-0">
-            <input id="autostart" type="checkbox" class="peer sr-only">
-            <span class="absolute h-full w-full rounded-full bg-zinc-200 peer-checked:bg-emerald-500 transition-colors"></span>
-            <span class="absolute h-5 w-5 translate-x-0.5 rounded-full bg-white shadow ring-1 ring-zinc-200 transition-transform peer-checked:translate-x-[22px]"></span>
-          </label>
-        </div>
-      </div>
-    </section>
-
-    <!-- Developer -->
-    <section class="space-y-2">
-      <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-        </svg>
-        <h2 class="text-sm font-semibold tracking-tight">Developer</h2>
-      </div>
-      <div class="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-sm p-4">
-        <div class="flex items-start justify-between gap-4">
-          <div class="space-y-0.5">
-            <div class="text-sm font-medium">Developer mode</div>
-            <div class="text-[11px] text-zinc-500">Reveals "simulate state" + "icon style" submenus in tray right-click.</div>
+          <div id="claude-step2" class="hidden space-y-2">
+            <label for="claude-code" class="text-xs text-fg-2">Code from the last page</label>
+            <div class="flex gap-2">
+              <input id="claude-code" class="field flex-1 min-w-0 font-mono" placeholder="Paste the code" aria-label="Code from the sign-in page" autocomplete="off">
+              <button id="claude-finish" type="button" class="btn">Add</button>
+            </div>
+            <input id="claude-url" class="field w-full !text-xs" readonly aria-label="Sign-in page address, if the browser did not open">
           </div>
-          <label class="relative inline-flex h-6 w-11 cursor-pointer items-center shrink-0">
-            <input id="dev-mode" type="checkbox" class="peer sr-only">
-            <span class="absolute h-full w-full rounded-full bg-zinc-200 peer-checked:bg-emerald-500 transition-colors"></span>
-            <span class="absolute h-5 w-5 translate-x-0.5 rounded-full bg-white shadow ring-1 ring-zinc-200 transition-transform peer-checked:translate-x-[22px]"></span>
-          </label>
+        </div>
+
+        <div id="add-codex" class="hidden space-y-3">
+          <div class="space-y-1">
+            <label for="codex-label" class="text-xs text-fg-2">Name</label>
+            <div class="flex gap-2">
+              <input id="codex-label" class="field flex-1 min-w-0" placeholder="For example Personal" aria-label="Account name">
+              <button id="codex-start" type="button" class="btn">Get sign-in code</button>
+            </div>
+          </div>
+          <div id="codex-step2" class="hidden rounded-lg bg-subtle border border-stroke p-4 space-y-1.5 text-center">
+            <div class="text-xs text-fg-2">Enter this code on the page that opened</div>
+            <div id="codex-code" class="font-mono text-2xl font-semibold tracking-[0.2em] select-all"></div>
+            <div id="codex-url" class="text-xs text-fg-2 select-all break-all"></div>
+          </div>
+        </div>
+
+        <div id="add-copilot" class="hidden space-y-3">
+          <div class="flex gap-2 items-end">
+            <div class="w-32 space-y-1">
+              <label for="copilot-label" class="text-xs text-fg-2">Name</label>
+              <input id="copilot-label" class="field w-full" placeholder="Work" aria-label="Account name">
+            </div>
+            <div class="flex-1 min-w-0 space-y-1">
+              <label for="copilot-token" class="text-xs text-fg-2">GitHub token</label>
+              <input id="copilot-token" type="password" class="field w-full font-mono" placeholder="gho_... or ghp_..." aria-label="GitHub token" autocomplete="off">
+            </div>
+            <button id="copilot-save" type="button" class="btn">Add</button>
+          </div>
+          <p class="text-xs text-fg-2 leading-relaxed">Token with Copilot access, for example from <code class="px-1 py-0.5 rounded bg-subtle font-mono text-[11px]">gh auth token</code>. Stored as plain text in the settings file.</p>
+          <div class="flex items-center justify-between gap-3 pt-3 border-t border-divider">
+            <span class="text-xs text-fg-2">Or copy a login from OpenCode</span>
+            <button id="copilot-import-load" type="button" class="btn-quiet">Show OpenCode logins</button>
+          </div>
+          <div id="copilot-import-list" class="space-y-2"></div>
+        </div>
+
+        <p id="add-status" class="text-[11px] text-zinc-500" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="space-y-2">
+      <div>
+        <h2 class="text-sm font-semibold">Meridian</h2>
+        <p class="text-xs text-fg-2 mt-0.5">Claude profiles from a local Meridian. An empty address turns it off.</p>
+      </div>
+      <div class="card p-4 space-y-3">
+        <div class="space-y-1">
+          <label for="meridian-url" class="text-xs text-fg-2">Address</label>
+          <input id="meridian-url" class="field w-full font-mono" placeholder="http://127.0.0.1:3456" aria-label="Meridian address">
+        </div>
+        <div class="space-y-1">
+          <label for="meridian-key" class="text-xs text-fg-2">API key</label>
+          <input id="meridian-key" type="password" class="field w-full font-mono" aria-label="Meridian API key" autocomplete="off">
+        </div>
+        <div class="flex items-center gap-2 pt-1">
+          <span id="meridian-status" class="text-xs text-zinc-500"></span>
+          <div class="ml-auto flex items-center gap-2 shrink-0">
+            <button id="meridian-clear-key" type="button" class="hidden h-8 px-2 rounded-md text-xs text-fg-2 hover:text-err hover:bg-err/10">Remove key</button>
+            <button id="meridian-save" type="button" class="btn">Save</button>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- Data source note -->
-    <section class="rounded-2xl border border-dashed border-zinc-300 bg-white/40 p-5 text-[11px] text-zinc-600 leading-relaxed">
-      <div class="flex items-start gap-3">
-        <svg class="w-4 h-4 mt-0.5 text-zinc-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
-        </svg>
-        <div>
-          <div class="font-medium text-zinc-700 mb-0.5">Data source: OAuth API</div>
-          Claude reads <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">~/.claude/.credentials.json</code>. Codex reads <code class="px-1 py-0.5 rounded bg-zinc-100 font-mono">~/.codex/auth.json</code>. PTY scrape kept only as last-resort fallback.
+    <section class="space-y-2">
+      <h2 class="text-sm font-semibold">Behavior</h2>
+      <div class="card divide-y divide-divider">
+        <div class="flex items-center justify-between gap-4 px-4 py-3">
+          <div class="min-w-0">
+            <label for="interval" class="text-sm">Poll interval</label>
+            <p class="text-xs text-fg-2 mt-0.5">How often usage is fetched.</p>
+          </div>
+          <select id="interval" class="field w-40 shrink-0"></select>
         </div>
+        <div class="flex items-center justify-between gap-4 px-4 py-3">
+          <div class="min-w-0">
+            <label for="icon-style" class="text-sm">Icon style</label>
+            <p class="text-xs text-fg-2 mt-0.5">How the tray icon draws the primary account.</p>
+          </div>
+          <select id="icon-style" class="field w-40 shrink-0"></select>
+        </div>
+      </div>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-sm font-semibold">Startup</h2>
+      <div class="card flex items-center justify-between gap-4 px-4 py-3">
+        <div class="min-w-0">
+          <div class="text-sm">Start with Windows</div>
+          <div class="text-xs text-fg-2 mt-0.5 leading-relaxed">Writes <code class="px-1 py-0.5 rounded bg-subtle font-mono text-[11px] break-all">HKCU\Software\Microsoft\Windows\CurrentVersion\Run</code></div>
+        </div>
+        <label class="switch">
+          <input id="autostart" type="checkbox" aria-label="Start with Windows">
+          <span class="track"></span>
+          <span class="knob"></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-sm font-semibold">Developer</h2>
+      <div class="card flex items-center justify-between gap-4 px-4 py-3">
+        <div class="min-w-0">
+          <div class="text-sm">Developer mode</div>
+          <div class="text-xs text-fg-2 mt-0.5">Adds "simulate state" and "icon style" to the tray right-click menu.</div>
+        </div>
+        <label class="switch">
+          <input id="dev-mode" type="checkbox" aria-label="Developer mode">
+          <span class="track"></span>
+          <span class="knob"></span>
+        </label>
       </div>
     </section>
 

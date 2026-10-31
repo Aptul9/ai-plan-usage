@@ -153,9 +153,9 @@ function updateWidget(
   const reset = widgetEl.querySelector('.reset') as HTMLElement
   if (errored || pct == null) {
     arc.style.strokeDashoffset = String(CIRCUMFERENCE)
-    arc.style.stroke = '#bbb'
-    num.textContent = errored ? '!' : '—'
-    num.style.color = '#888'
+    arc.style.stroke = 'var(--ring-off)'
+    num.textContent = errored ? '!' : '--'
+    num.style.color = errored ? 'var(--danger)' : 'var(--text-3)'
     reset.textContent = ''
     return
   }
@@ -165,7 +165,8 @@ function updateWidget(
   arc.style.strokeDashoffset = String(CIRCUMFERENCE * (1 - clamped / 100))
   arc.style.stroke = color
   num.textContent = String(Math.round(clamped))
-  num.style.color = color
+  // The arc carries the pace color; the number stays in the text color for contrast in both themes.
+  num.style.color = ''
   reset.textContent = resetIso
     ? fmtDuration(new Date(resetIso).getTime() - Date.now())
     : ''
@@ -180,26 +181,30 @@ function updateOverageWidget(
   const used = widgetEl.querySelector('.overage-used') as HTMLElement
   const of = widgetEl.querySelector('.overage-of') as HTMLElement
   const reset = widgetEl.querySelector('.reset') as HTMLElement
+  used.style.color = ''
+  of.style.color = ''
   if (errored) {
     used.textContent = '!'
     of.textContent = ''
-    main.style.color = '#888'
+    main.style.color = 'var(--danger)'
     reset.textContent = ''
     return
   }
   if (block && block.usedAbs != null && block.entitlement != null) {
     used.textContent = String(block.usedAbs)
     of.textContent = `of ${block.entitlement}`
-    const color = (block.overage ?? 0) > 0 ? '#dc2626' : '#222'
-    used.style.color = color
-    of.style.color = (block.overage ?? 0) > 0 ? '#dc2626' : '#888'
+    main.style.color = ''
+    if ((block.overage ?? 0) > 0) {
+      used.style.color = HEX_RED
+      of.style.color = HEX_RED
+    }
     reset.textContent = block.resetsAt
       ? fmtDuration(new Date(block.resetsAt).getTime() - Date.now())
       : ''
   } else {
-    used.textContent = '—'
+    used.textContent = '--'
     of.textContent = ''
-    main.style.color = '#888'
+    main.style.color = 'var(--text-3)'
     reset.textContent = ''
   }
 }
@@ -325,7 +330,9 @@ function rebuild(s: PublicState): void {
   if (shown.length === 0) {
     const empty = document.createElement('div')
     empty.className = 'empty'
-    empty.textContent = 'No accounts yet. Right-click the tray icon, then Settings, to add one.'
+    empty.textContent = (s.accounts || []).length === 0
+      ? 'No accounts yet. Right-click the tray icon, then Settings, to add one.'
+      : 'All accounts are turned off. Turn one on in Settings.'
     root.appendChild(empty)
   }
   for (const a of shown) root.appendChild(buildAccountRow(a))
@@ -406,9 +413,12 @@ function rebuildAndResize(s: PublicState): void {
 let current: PublicState | null = null
 let lastRowsKey = ''
 
-// Rows are rebuilt when the shown accounts, their order or their names change.
+// Rows are rebuilt when the shown accounts, their order or their names change,
+// and when the last account goes away (the empty hint changes wording).
 function rowsKey(s: PublicState): string {
-  return (s.accounts || [])
+  const all = s.accounts || []
+  if (all.length === 0) return '#none'
+  return all
     .filter((a) => a.enabled)
     .map((a) => `${a.id}=${a.label}`)
     .join('|')

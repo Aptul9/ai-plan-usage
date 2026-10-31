@@ -1,167 +1,395 @@
-function byId(id: string): HTMLElement | null {
-  return document.getElementById(id)
+function byId<T extends HTMLElement = HTMLElement>(id: string): T | null {
+  return document.getElementById(id) as T | null
 }
+
+const NAMES: Record<Provider, string> = { claude: 'Claude', codex: 'Codex', copilot: 'Copilot' }
+const LOGO_SRC: Record<Provider, string> = {
+  claude: 'assets/claude-symbol.svg',
+  codex: 'assets/openai-symbol.svg',
+  copilot: 'assets/copilot-symbol.svg',
+}
+const SOURCE_TAGS: Record<Source, string> = { meridian: 'Meridian', oauth: 'Sign-in', token: 'Token' }
+
+const ICON_GRIP =
+  '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">' +
+  '<circle cx="6" cy="3.5" r="1.25"/><circle cx="10" cy="3.5" r="1.25"/><circle cx="6" cy="8" r="1.25"/>' +
+  '<circle cx="10" cy="8" r="1.25"/><circle cx="6" cy="12.5" r="1.25"/><circle cx="10" cy="12.5" r="1.25"/></svg>'
+const STAR_PATH = 'M10 2.2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L10 14.6l-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z'
+const ICON_STAR =
+  `<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="${STAR_PATH}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`
+const ICON_STAR_FILLED =
+  `<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="${STAR_PATH}" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`
+const ICON_REMOVE =
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'
 
 let cfg: SettingsBundle | null = null
+let dragging = false
+let addProvider: Provider | null = null
+let codexRun = 0
 
-async function init(): Promise<void> {
+function errText(e: unknown): string {
+  if (typeof e === 'string') return e
+  if (e instanceof Error) return e.message
+  return String(e)
+}
+
+function setAddStatus(text: string, tone: 'ok' | 'err' | 'info' = 'info'): void {
+  const el = byId('add-status')
+  if (!el) return
+  el.textContent = text
+  el.className = 'text-[11px] ' + (tone === 'ok' ? 'text-emerald-600' : tone === 'err' ? 'text-red-600' : 'text-zinc-500')
+}
+
+async function reload(): Promise<void> {
   cfg = await window.mock.getSettings()
-  renderProviders()
-  renderPrimary()
-  renderInterval()
-  renderIconStyle()
+  renderAccounts()
+  renderMeridian()
+}
 
-  window.mock.onUpdate(async () => {
-    cfg = await window.mock.getSettings()
-    renderProviders()
-    renderPrimary()
-    void refreshCopilotStatus()
+function renderAccounts(): void {
+  const root = byId('accounts')
+  if (!root || !cfg) return
+  // A poll landing mid-rename or mid-drag must not throw away the edit.
+  // Only the rename text field counts: a toggle keeps focus after a click and must still re-render.
+  const active = document.activeElement
+  const renaming = active instanceof HTMLInputElement && active.type === 'text' && root.contains(active)
+  if (dragging || renaming) return
+  root.innerHTML = ''
+  if (cfg.accounts.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'px-5 py-4 text-xs text-zinc-500'
+    empty.textContent = 'No accounts yet. Add one below, or start Meridian.'
+    root.appendChild(empty)
+    return
+  }
+  for (const a of cfg.accounts) root.appendChild(accountRow(a))
+}
+
+function accountRow(a: Account): HTMLDivElement {
+  const row = document.createElement('div')
+  row.className = 'account-row flex items-center gap-2 pl-1 pr-2 min-h-[56px] py-2 transition-colors'
+  row.dataset.id = a.id
+
+  const handle = document.createElement('span')
+  handle.className = 'flex items-center justify-center w-6 h-8 shrink-0 rounded cursor-grab select-none touch-none text-fg-3 hover:text-fg'
+  handle.innerHTML = ICON_GRIP
+  handle.title = 'Drag to reorder'
+  handle.addEventListener('pointerdown', (e) => startDrag(e, row))
+  row.appendChild(handle)
+
+  const logo = document.createElement('img')
+  logo.src = LOGO_SRC[a.provider]
+  logo.alt = NAMES[a.provider]
+  // The OpenAI and Copilot marks are black.
+  logo.className = 'w-5 h-5 mx-1 shrink-0' + (a.provider === 'claude' ? '' : ' dark:invert') + (a.enabled ? '' : ' opacity-40')
+  row.appendChild(logo)
+
+  const text = document.createElement('div')
+  text.className = 'flex-1 min-w-0 flex flex-col'
+  const name = document.createElement('button')
+  name.type = 'button'
+  name.className = 'name-btn self-start max-w-full h-6 rounded text-left text-sm font-medium truncate hover:underline underline-offset-2' + (a.enabled ? '' : ' text-fg-3')
+  name.textContent = a.label
+  name.title = 'Rename'
+  name.addEventListener('click', () => startRename(row, a))
+  text.appendChild(name)
+  const caption = document.createElement('span')
+  caption.className = 'text-xs text-fg-2 truncate'
+  caption.textContent = `${NAMES[a.provider]} · ${SOURCE_TAGS[a.source]}` + (a.enabled ? '' : ' · off')
+  text.appendChild(caption)
+  row.appendChild(text)
+
+  const isPrimary = cfg?.primary === a.id
+  const star = document.createElement('button')
+  star.type = 'button'
+  star.className = 'flex items-center justify-center w-8 h-8 rounded-md shrink-0 hover:bg-subtle disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed ' + (isPrimary ? 'text-star' : 'text-fg-3 hover:text-fg')
+  star.innerHTML = isPrimary ? ICON_STAR_FILLED : ICON_STAR
+  star.title = isPrimary ? 'Behind the tray icon' : 'Use for the tray icon'
+  star.setAttribute('aria-label', star.title)
+  star.setAttribute('aria-pressed', String(isPrimary))
+  star.disabled = !a.enabled
+  star.addEventListener('click', async () => {
+    await window.mock.setPrimary(a.id)
+    await reload()
+  })
+  row.appendChild(star)
+
+  const sw = document.createElement('label')
+  sw.className = 'switch'
+  sw.innerHTML = `
+    <input type="checkbox" ${a.enabled ? 'checked' : ''}>
+    <span class="track"></span>
+    <span class="knob"></span>
+  `
+  const cb = sw.querySelector('input') as HTMLInputElement
+  cb.setAttribute('aria-label', `Show ${a.label} in the popover`)
+  cb.addEventListener('change', async () => {
+    await window.mock.setAccountEnabled(a.id, cb.checked)
+    await reload()
+  })
+  row.appendChild(sw)
+
+  const remove = document.createElement('button')
+  remove.type = 'button'
+  remove.className = 'flex items-center justify-center h-8 min-w-8 px-2 rounded-md text-xs font-medium shrink-0 text-fg-3 hover:text-err hover:bg-err/10'
+  remove.innerHTML = ICON_REMOVE
+  remove.setAttribute('aria-label', `Remove ${a.label}`)
+  // Meridian rows come back on the next poll, so they are turned off instead.
+  if (a.source === 'meridian') remove.classList.add('invisible')
+  remove.addEventListener('click', async () => {
+    if (remove.dataset.armed !== '1') {
+      remove.dataset.armed = '1'
+      remove.textContent = 'Remove?'
+      remove.classList.add('text-err', 'bg-err/10')
+      setTimeout(() => {
+        remove.dataset.armed = ''
+        remove.innerHTML = ICON_REMOVE
+        remove.classList.remove('text-err', 'bg-err/10')
+      }, 3000)
+      return
+    }
+    await window.mock.removeAccount(a.id)
+    await reload()
+  })
+  row.appendChild(remove)
+  return row
+}
+
+function startRename(row: HTMLDivElement, a: Account): void {
+  const btn = row.querySelector('.name-btn') as HTMLButtonElement | null
+  if (!btn) return
+  const input = document.createElement('input')
+  input.value = a.label
+  input.className = 'flex-1 min-w-0 h-8 rounded-md border border-zinc-300 px-2 text-sm'
+  input.setAttribute('aria-label', 'Account name')
+  btn.replaceWith(input)
+  input.focus()
+  input.select()
+  let done = false
+  const finish = async (save: boolean): Promise<void> => {
+    if (done) return
+    done = true
+    const next = input.value.trim()
+    input.blur()
+    if (save && next && next !== a.label) {
+      try {
+        await window.mock.renameAccount(a.id, next)
+      } catch (e) {
+        setAddStatus(errText(e), 'err')
+      }
+    }
+    await reload()
+  }
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') void finish(true)
+    if (e.key === 'Escape') void finish(false)
+  })
+  input.addEventListener('blur', () => void finish(true))
+}
+
+function startDrag(e: PointerEvent, row: HTMLDivElement): void {
+  const root = byId('accounts')
+  if (!root || !cfg) return
+  e.preventDefault()
+  dragging = true
+  const id = row.dataset.id
+  const from = cfg.accounts.findIndex((a) => a.id === id)
+  row.classList.add('opacity-60', 'bg-zinc-50')
+  const move = (ev: PointerEvent): void => {
+    const others = Array.from(root.querySelectorAll<HTMLDivElement>('.account-row')).filter((r) => r !== row)
+    const before = others.find((r) => {
+      const b = r.getBoundingClientRect()
+      return ev.clientY < b.top + b.height / 2
+    })
+    if (before) root.insertBefore(row, before)
+    else root.appendChild(row)
+  }
+  const up = async (): Promise<void> => {
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+    row.classList.remove('opacity-60', 'bg-zinc-50')
+    const to = Array.from(root.querySelectorAll<HTMLDivElement>('.account-row')).findIndex((r) => r === row)
+    dragging = false
+    if (to >= 0 && to !== from) await window.mock.moveAccount(id, to)
+    await reload()
+  }
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+}
+
+function renderMeridian(): void {
+  if (!cfg) return
+  const url = byId<HTMLInputElement>('meridian-url')
+  if (url && document.activeElement !== url) url.value = cfg.meridian.url
+  const key = byId<HTMLInputElement>('meridian-key')
+  if (key) {
+    key.placeholder = cfg.meridian.hasApiKey
+      ? 'API key saved, type to replace'
+      : 'API key, only if MERIDIAN_API_KEY is set'
+  }
+  byId('meridian-clear-key')?.classList.toggle('hidden', !cfg.meridian.hasApiKey)
+  const st = byId('meridian-status')
+  if (!st) return
+  const m = cfg.meridianStatus
+  let text = 'Not reachable'
+  if (!cfg.meridian.url) text = 'Off'
+  else if (!m.checkedAt) text = 'Not checked yet'
+  else if (m.reachable) text = `Reachable, ${m.profiles} Claude profile${m.profiles === 1 ? '' : 's'}`
+  st.textContent = text
+  st.className = 'text-xs ' + (m.reachable && cfg.meridian.url ? 'text-emerald-600' : 'text-zinc-500')
+}
+
+function wireMeridian(): void {
+  byId('meridian-save')?.addEventListener('click', async () => {
+    const keyInput = byId<HTMLInputElement>('meridian-key')
+    const key = keyInput ? keyInput.value.trim() : ''
+    await window.mock.setMeridian(byId<HTMLInputElement>('meridian-url')?.value ?? '', key ? key : null)
+    if (keyInput) keyInput.value = ''
+    await reload()
+  })
+  byId('meridian-clear-key')?.addEventListener('click', async () => {
+    await window.mock.setMeridian(byId<HTMLInputElement>('meridian-url')?.value ?? '', '')
+    await reload()
+  })
+}
+
+function showAdd(p: Provider | null): void {
+  addProvider = p
+  for (const id of ['claude', 'codex', 'copilot'] as Provider[]) {
+    byId(`add-${id}`)?.classList.toggle('hidden', p !== id)
+    document
+      .querySelector<HTMLButtonElement>(`#add-provider [data-provider="${id}"]`)
+      ?.setAttribute('aria-pressed', String(p === id))
+  }
+  setAddStatus('')
+}
+
+function value(id: string): string {
+  return byId<HTMLInputElement>(id)?.value ?? ''
+}
+
+function wireAdd(): void {
+  document.querySelectorAll<HTMLButtonElement>('#add-provider [data-provider]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const p = b.dataset.provider as Provider
+      showAdd(addProvider === p ? null : p)
+    })
   })
 
-  const auto = await window.mock.getAutostart()
-  const autostart = byId('autostart') as HTMLInputElement | null
-  if (autostart) {
-    autostart.checked = !!auto
-    autostart.addEventListener('change', async () => {
-      const actual = await window.mock.setAutostart(autostart.checked)
-      autostart.checked = !!actual
-    })
-  }
-
-  const devMode = byId('dev-mode') as HTMLInputElement | null
-  if (devMode && cfg) {
-    devMode.checked = !!cfg.devMode
-    devMode.addEventListener('change', async () => {
-      const actual = await window.mock.setDevMode(devMode.checked)
-      devMode.checked = !!actual
-    })
-  }
-
-  await refreshCopilotStatus()
-  const save = byId('save-copilot')
-  if (save) {
-    save.addEventListener('click', async () => {
-      const input = byId('copilot-token') as HTMLInputElement
-      const value = input.value
-      const ok = await window.mock.setCopilotToken(value)
-      input.value = ''
-      setStatus(ok ? 'set' : 'cleared')
-      cfg = await window.mock.getSettings()
-      renderProviders()
-      renderPrimary()
-      setTimeout(refreshCopilotStatus, 1500)
-    })
-  }
-}
-
-async function refreshCopilotStatus(): Promise<void> {
-  const st = await window.mock.getCopilotStatus()
-  setStatus(st.hasToken ? 'set' : 'unset', st.encryptionAvailable)
-}
-
-function setStatus(state: 'set' | 'cleared' | 'unset', encAvail = true): void {
-  const el = byId('copilot-status')
-  const dot = byId('copilot-dot')
-  if (!el || !dot) return
-  if (state === 'set') {
-    el.textContent = 'set' + (encAvail ? '' : ' (warning: OS encryption unavailable)')
-    el.className = 'font-medium text-emerald-600'
-    dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500'
-  } else if (state === 'cleared') {
-    el.textContent = 'cleared'
-    el.className = 'font-medium text-amber-600'
-    dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-500'
-  } else {
-    el.textContent = 'not set'
-    el.className = 'font-medium text-amber-600'
-    dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-500'
-  }
-}
-
-function renderProviders(): void {
-  const root = byId('providers')
-  if (!root || !cfg) return
-  root.innerHTML = ''
-  for (const p of cfg.providers) {
-    const disabled = !p.available
-    const row = document.createElement('div')
-    row.className =
-      'flex items-center justify-between gap-3 px-5 py-3.5 ' +
-      (disabled ? 'opacity-50' : 'hover:bg-zinc-50/50')
-    const left = document.createElement('div')
-    left.className = 'flex items-center gap-3'
-    const labelText = document.createElement('div')
-    labelText.className = 'text-sm font-medium'
-    labelText.textContent = p.label
-    left.appendChild(labelText)
-    if (!p.available) {
-      const tag = document.createElement('span')
-      tag.className = 'text-[10px] uppercase tracking-wider font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500'
-      tag.textContent = p.id === 'copilot' ? 'needs token' : 'soon'
-      left.appendChild(tag)
+  byId('claude-start')?.addEventListener('click', async () => {
+    try {
+      const url = await window.mock.claudeLoginStart()
+      const urlField = byId<HTMLInputElement>('claude-url')
+      if (urlField) urlField.value = url
+      byId('claude-step2')?.classList.remove('hidden')
+      byId<HTMLInputElement>('claude-code')?.focus()
+      setAddStatus('Sign in in the browser, then paste the code from the last page.')
+    } catch (e) {
+      setAddStatus(errText(e), 'err')
     }
-    row.appendChild(left)
-    // Switch toggle
-    const sw = document.createElement('label')
-    sw.className = 'relative inline-flex h-6 w-11 cursor-pointer items-center shrink-0'
-    if (disabled) sw.classList.add('opacity-50', 'cursor-not-allowed')
-    sw.innerHTML = `
-      <input type="checkbox" class="peer sr-only" ${p.enabled ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
-      <span class="absolute h-full w-full rounded-full bg-zinc-200 peer-checked:bg-emerald-500 transition-colors"></span>
-      <span class="absolute h-5 w-5 translate-x-0.5 rounded-full bg-white shadow ring-1 ring-zinc-200 transition-transform peer-checked:translate-x-[22px]"></span>
-    `
-    const cb = sw.querySelector('input') as HTMLInputElement
-    cb.addEventListener('change', async () => {
-      const result = await window.mock.setProviderEnabled(p.id, cb.checked)
-      if (cfg) {
-        cfg.providers = result.providers
-        cfg.primaryProvider = result.primaryProvider
+  })
+
+  byId('claude-finish')?.addEventListener('click', async () => {
+    try {
+      await window.mock.claudeLoginFinish(value('claude-code'), value('claude-label'))
+      const code = byId<HTMLInputElement>('claude-code')
+      if (code) code.value = ''
+      byId('claude-step2')?.classList.add('hidden')
+      setAddStatus('Claude account added.', 'ok')
+      await reload()
+    } catch (e) {
+      setAddStatus(errText(e), 'err')
+    }
+  })
+
+  byId('codex-start')?.addEventListener('click', async () => {
+    const run = ++codexRun
+    try {
+      const d = await window.mock.codexLoginStart()
+      const code = byId('codex-code')
+      if (code) code.textContent = d.userCode
+      const url = byId('codex-url')
+      if (url) url.textContent = d.url
+      byId('codex-step2')?.classList.remove('hidden')
+      setAddStatus('Waiting for approval in the browser…')
+      await window.mock.codexLoginFinish(value('codex-label'))
+      if (run !== codexRun) return
+      byId('codex-step2')?.classList.add('hidden')
+      setAddStatus('Codex account added.', 'ok')
+      await reload()
+    } catch (e) {
+      // A newer "Get sign-in code" click owns the panel now.
+      if (run !== codexRun) return
+      byId('codex-step2')?.classList.add('hidden')
+      setAddStatus(errText(e), 'err')
+    }
+  })
+
+  byId('copilot-save')?.addEventListener('click', async () => {
+    try {
+      await window.mock.copilotAddToken(value('copilot-token'), value('copilot-label'))
+      const token = byId<HTMLInputElement>('copilot-token')
+      if (token) token.value = ''
+      setAddStatus('Copilot account added.', 'ok')
+      await reload()
+    } catch (e) {
+      setAddStatus(errText(e), 'err')
+    }
+  })
+
+  byId('copilot-import-load')?.addEventListener('click', async () => {
+    const list = byId('copilot-import-list')
+    if (!list) return
+    list.innerHTML = ''
+    try {
+      const logins = await window.mock.copilotImportList()
+      if (logins.length === 0) {
+        setAddStatus('No Copilot logins in OpenCode.')
+        return
       }
-      renderPrimary()
-    })
-    row.appendChild(sw)
-    root.appendChild(row)
-  }
-}
-
-function renderPrimary(): void {
-  const root = byId('primary')
-  if (!root || !cfg) return
-  root.innerHTML = ''
-  for (const p of cfg.providers) {
-    const usable = p.available && p.enabled
-    const selected = cfg.primaryProvider === p.id
-    const chip = document.createElement('button')
-    chip.type = 'button'
-    chip.disabled = !usable
-    chip.className = [
-      'inline-flex items-center gap-2 h-9 px-3 rounded-lg text-sm font-medium transition',
-      selected
-        ? 'bg-zinc-900 text-white shadow-sm'
-        : 'bg-white text-zinc-700 border border-zinc-200 hover:border-zinc-300',
-      !usable && 'opacity-40 cursor-not-allowed',
-    ].filter(Boolean).join(' ')
-    chip.textContent = p.label
-    if (usable) {
-      chip.addEventListener('click', async () => {
-        const newPrimary = await window.mock.setPrimary(p.id)
-        if (cfg) cfg.primaryProvider = newPrimary
-        renderPrimary()
-      })
+      setAddStatus('')
+      for (const l of logins) {
+        const row = document.createElement('div')
+        row.className = 'flex items-center gap-3 rounded-lg border border-stroke bg-subtle pl-3 pr-1.5 py-1.5 text-sm'
+        const logo = document.createElement('img')
+        logo.src = LOGO_SRC.copilot
+        logo.alt = ''
+        logo.className = 'w-4 h-4 shrink-0 dark:invert'
+        const name = document.createElement('span')
+        name.className = 'flex-1 min-w-0 truncate'
+        name.textContent = l.label
+        const add = document.createElement('button')
+        add.type = 'button'
+        add.className = 'btn-quiet'
+        add.textContent = 'Add'
+        add.addEventListener('click', async () => {
+          try {
+            await window.mock.copilotImport(l.id, l.label)
+            setAddStatus(`Copilot · ${l.label} added.`, 'ok')
+            row.remove()
+            await reload()
+          } catch (e) {
+            setAddStatus(errText(e), 'err')
+          }
+        })
+        row.append(logo, name, add)
+        list.appendChild(row)
+      }
+    } catch (e) {
+      setAddStatus(errText(e), 'err')
     }
-    root.appendChild(chip)
-  }
+  })
 }
 
 function renderInterval(): void {
-  const sel = byId('interval') as HTMLSelectElement | null
+  const sel = byId<HTMLSelectElement>('interval')
   if (!sel || !cfg) return
   sel.innerHTML = ''
   for (const it of cfg.intervals) {
     const opt = document.createElement('option')
     opt.value = String(it.ms)
     opt.textContent = it.label
-    if (it.ms === cfg.pollIntervalMs) opt.selected = true
+    opt.selected = it.ms === cfg.pollIntervalMs
     sel.appendChild(opt)
   }
   sel.addEventListener('change', async () => {
@@ -171,20 +399,45 @@ function renderInterval(): void {
 }
 
 function renderIconStyle(): void {
-  const sel = byId('icon-style') as HTMLSelectElement | null
+  const sel = byId<HTMLSelectElement>('icon-style')
   if (!sel || !cfg) return
   sel.innerHTML = ''
   for (const s of cfg.iconStyles) {
     const opt = document.createElement('option')
     opt.value = s
     opt.textContent = s
-    if (s === cfg.iconStyle) opt.selected = true
+    opt.selected = s === cfg.iconStyle
     sel.appendChild(opt)
   }
   sel.addEventListener('change', async () => {
     const next = await window.mock.setIconStyle(sel.value as IconStyle)
     if (cfg) cfg.iconStyle = next
   })
+}
+
+async function init(): Promise<void> {
+  await reload()
+  renderInterval()
+  renderIconStyle()
+  wireAdd()
+  wireMeridian()
+  window.mock.onUpdate(() => void reload())
+
+  const autostart = byId<HTMLInputElement>('autostart')
+  if (autostart) {
+    autostart.checked = !!(await window.mock.getAutostart())
+    autostart.addEventListener('change', async () => {
+      autostart.checked = !!(await window.mock.setAutostart(autostart.checked))
+    })
+  }
+
+  const devMode = byId<HTMLInputElement>('dev-mode')
+  if (devMode && cfg) {
+    devMode.checked = !!cfg.devMode
+    devMode.addEventListener('change', async () => {
+      devMode.checked = !!(await window.mock.setDevMode(devMode.checked))
+    })
+  }
 }
 
 void init()

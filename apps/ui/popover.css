@@ -1,98 +1,169 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { overflow: hidden; }
+/* Windows 11 flyout neutrals. The pace colors (green, amber, red) come from popover.ts. */
+:root {
+  color-scheme: light dark;
+  --bg: #f9f9f9;
+  --stroke: #d4d4d4;
+  --divider: #e8e8e8;
+  --text: #1b1b1b;
+  --text-2: #5c5c5c;
+  --text-3: #6e6e6e;
+  --track: #e3e3e3;
+  --ring-off: #c4c4c4;
+  --danger: #c42b1c;
+  --focus: #000000;
+  --thumb: #c2c2c2;
+  --chip-err-bg: #fde7e9;
+  --chip-err-fg: #a4262c;
+  --chip-stale-bg: #fff4ce;
+  --chip-stale-fg: #7a4d00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #2c2c2c;
+    --stroke: #474747;
+    --divider: #3b3b3b;
+    --text: #ffffff;
+    --text-2: #cfcfcf;
+    --text-3: #a8a8a8;
+    --track: #424242;
+    --ring-off: #5e5e5e;
+    --danger: #ff99a4;
+    --focus: #ffffff;
+    --thumb: #5c5c5c;
+    --chip-err-bg: #442726;
+    --chip-err-fg: #ff99a4;
+    --chip-stale-bg: #433519;
+    --chip-stale-fg: #fce100;
+  }
+  /* The OpenAI and Copilot marks are black. */
+  .provider-row[data-provider="codex"] .logo,
+  .provider-row[data-provider="copilot"] .logo { filter: invert(1); }
+}
+
+html { overflow: hidden; background: var(--bg); }
 body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  background: #fafafa;
-  color: #222;
-  padding: 14px 22px 16px;
+  font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--stroke);
+  padding: 4px 16px;
   user-select: none;
   cursor: default;
   position: relative;
-  display: inline-block;
-  min-width: 180px;
+  /* Shrinks to the rows; the Rust side clamps the window at 600 px, so the rows scroll past that. */
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 240px;
+  max-height: 600px;
+  -webkit-font-smoothing: antialiased;
 }
+body:has(.chip:not(.hidden)) { padding-top: 30px; }
 
 .chip {
   position: absolute;
-  top: 2px;
-  right: 4px;
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
+  top: 8px;
+  right: 12px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
   border: 0;
   font-family: inherit;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
 }
+/* 32 px hit area around the 20 px pill. */
+.chip::before { content: ''; position: absolute; inset: -6px -4px; }
 .chip.hidden { display: none; }
-.chip.stale  { background: #fed7aa; color: #7c2d12; cursor: default; }
-.chip.err    { background: #fee2e2; color: #991b1b; }
-.chip:focus-visible {
-  outline: 2px solid #991b1b;
-  outline-offset: 2px;
-}
+.chip.stale  { background: var(--chip-stale-bg); color: var(--chip-stale-fg); cursor: default; }
+.chip.err    { background: var(--chip-err-bg); color: var(--chip-err-fg); }
+.chip.err:hover { box-shadow: inset 0 0 0 1px currentColor; }
+.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 #providers {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+/* Windows 11 style thin thumb, no arrow buttons. */
+#providers::-webkit-scrollbar, .error-panel::-webkit-scrollbar { width: 10px; }
+#providers::-webkit-scrollbar-track, .error-panel::-webkit-scrollbar-track { background: transparent; }
+#providers::-webkit-scrollbar-thumb, .error-panel::-webkit-scrollbar-thumb {
+  background: var(--thumb);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
 }
 
 .provider-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 2px 0;
+  gap: 16px;
+  padding: 10px 0;
 }
-.logo {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-}
+.provider-row + .provider-row { border-top: 1px solid var(--divider); }
+
 .ident {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  width: 56px;
+  gap: 4px;
+  width: 64px;
   flex-shrink: 0;
 }
+.logo {
+  width: 24px;
+  height: 24px;
+}
 .acct {
-  max-width: 56px;
+  max-width: 64px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
-  color: #555;
+  color: var(--text-2);
 }
 .empty {
-  max-width: 220px;
-  font-size: 11px;
-  line-height: 1.35;
-  color: #666;
+  max-width: 260px;
+  padding: 12px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
 }
 
+/* Ring on the left, label and reset countdown stacked on its right. */
 .widget {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: "ring label" "ring reset";
+  column-gap: 8px;
   align-items: center;
-  gap: 1px;
-  min-width: 50px;
+  min-width: 104px;
 }
 
 .wlabel {
-  font-size: 8px;
-  letter-spacing: 0.5px;
-  color: #888;
+  grid-area: label;
+  align-self: end;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
   font-weight: 600;
 }
 
 .ring-wrap {
+  grid-area: ring;
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
 }
 
 .ring {
@@ -102,13 +173,13 @@ body {
 }
 .ring .bg {
   fill: none;
-  stroke: #e5e5e5;
-  stroke-width: 12;
+  stroke: var(--track);
+  stroke-width: 11;
 }
 .ring .fg {
   fill: none;
   stroke: #22a06b;
-  stroke-width: 12;
+  stroke-width: 11;
   stroke-linecap: round;
   stroke-dasharray: 264;
   stroke-dashoffset: 264;
@@ -122,59 +193,66 @@ body {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 11px;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
 .reset {
-  font-size: 9px;
-  color: #555;
+  grid-area: reset;
+  align-self: start;
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--text-2);
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  font-weight: 600;
 }
+/* No reset time (error, no data): a placeholder keeps the label in place. */
+.reset:empty::before { content: '--'; color: var(--text-3); }
 
 .widget.overage .overage-main {
-  width: 56px;
-  height: 36px;
+  grid-area: ring;
+  min-width: 40px;
+  height: 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  line-height: 1.05;
+  line-height: 1.1;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 .widget.overage .overage-used {
   font-weight: 700;
-  font-size: 14px;
-  color: #dc2626;
+  font-size: 15px;
 }
 .widget.overage .overage-of {
   font-weight: 500;
-  font-size: 9px;
-  color: #888;
-  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-3);
 }
 
-.err-state .ring .fg { stroke: #bbb; }
-.err-state .ring-num { color: #888; }
-
-.provider-row {
-  position: relative;
-}
+/* An errored ring shows only its track: the round cap would leave a dot at 12 o'clock. */
+.err-state .ring .fg { opacity: 0; }
 
 .error-panel {
-  width: 260px;
-  margin-top: 10px;
-  padding-top: 9px;
-  border-top: 1px solid #e5e5e5;
-  color: #222;
+  /* Takes the rows' width without widening the popover itself. */
+  width: 0;
+  min-width: 100%;
+  flex-shrink: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--divider);
+  color: var(--text);
   user-select: text;
 }
 .error-panel.hidden { display: none; }
 .error-item + .error-item {
-  margin-top: 9px;
-  padding-top: 9px;
-  border-top: 1px solid #eee;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--divider);
 }
 .error-head {
   display: flex;
@@ -183,31 +261,35 @@ body {
   gap: 8px;
 }
 .error-provider {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
 }
 .error-kind {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
-  color: #991b1b;
+  color: var(--danger);
 }
 .error-message {
   margin-top: 4px;
-  font-size: 11px;
-  line-height: 1.3;
+  font-size: 12px;
+  line-height: 1.35;
 }
 .error-detail {
-  margin-top: 5px;
+  margin-top: 6px;
   max-width: 100%;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 10px;
-  line-height: 1.3;
-  color: #444;
+  font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-2);
 }
 .error-meta {
   margin-top: 4px;
-  font-size: 9px;
-  color: #666;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring .fg { transition: none; }
 }
