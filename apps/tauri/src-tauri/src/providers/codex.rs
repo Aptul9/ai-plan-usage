@@ -49,11 +49,11 @@ async fn request(
     req.send().await
 }
 
-fn client() -> Result<reqwest::Client, FetchResult> {
+fn client() -> Result<reqwest::Client, Box<FetchResult>> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()
-        .map_err(|e| FetchResult::err(format!("Codex client: {e}"), "upstream"))
+        .map_err(|e| Box::new(FetchResult::err(format!("Codex client: {e}"), "upstream")))
 }
 
 /// Usage with the login OpenCode holds, read fresh each poll. Never refreshed
@@ -76,7 +76,7 @@ pub async fn fetch_opencode(cred_id: &str) -> FetchResult {
     }
     let client = match client() {
         Ok(c) => c,
-        Err(e) => return e,
+        Err(e) => return *e,
     };
     let resp = match request(&client, &creds).await {
         Ok(r) => r,
@@ -102,7 +102,7 @@ async fn fetch_inner(
 ) -> FetchResult {
     let client = match client() {
         Ok(c) => c,
-        Err(e) => return e,
+        Err(e) => return *e,
     };
     let mut current = creds.clone();
     if current.expires_at - Utc::now().timestamp_millis() < REFRESH_SKEW_MS {
