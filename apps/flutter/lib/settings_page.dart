@@ -369,7 +369,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [zinc50, zinc100]),
                   ),
                   padding: EdgeInsets.only(right: _scrollbar, top: 66.5 + hair),
-                  child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 512), child: content)),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 512), child: content),
+                  ),
                 ),
               ),
             ),
@@ -1374,7 +1377,9 @@ class Field extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = monospace ? mono(fontSize, c: readOnly ? zinc500 : zinc900) : inter(fontSize, c: readOnly ? zinc500 : zinc900, lh: fontSize * 1.25);
+    // A whole-pixel line box keeps the decorated field at exactly 40 px.
+    final line = fontSize + 6;
+    final style = monospace ? mono(fontSize, c: readOnly ? zinc500 : zinc900, lh: line) : inter(fontSize, c: readOnly ? zinc500 : zinc900, lh: line);
     OutlineInputBorder border(Color c, [double? w]) =>
         OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: c, width: w ?? hair));
     return Container(
@@ -1395,7 +1400,7 @@ class Field extends StatelessWidget {
           fillColor: readOnly ? zinc50 : Colors.white,
           hintText: placeholder,
           hintStyle: style.copyWith(color: zinc400),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: (40 - line) / 2),
           enabledBorder: border(zinc200),
           focusedBorder: border(brand, 2),
         ),
