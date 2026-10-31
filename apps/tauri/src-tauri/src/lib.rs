@@ -6,6 +6,7 @@ mod commands;
 mod icon;
 mod meridian;
 mod oauth;
+mod opencode_import;
 mod popover;
 mod providers;
 mod scheduler;

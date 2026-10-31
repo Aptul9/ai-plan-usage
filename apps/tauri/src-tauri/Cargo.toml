@@ -31,6 +31,7 @@ futures = "0.3"
 sha2 = "0.10"
 base64 = "0.22"
 rand = "0.9"
+rusqlite = { version = "0.41", features = ["bundled"] }
 
 [features]
 default = ["custom-protocol"]
