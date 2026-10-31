@@ -31,6 +31,16 @@ final _user32 = DynamicLibrary.open('user32.dll');
 final _foregroundWindow = _user32.lookupFunction<IntPtr Function(), int Function()>('GetForegroundWindow');
 final _windowProcessId =
     _user32.lookupFunction<Uint32 Function(IntPtr, Pointer<Uint32>), int Function(int, Pointer<Uint32>)>('GetWindowThreadProcessId');
+final _keybdEvent = _user32.lookupFunction<Void Function(Uint8, Uint8, Uint32, UintPtr), void Function(int, int, int, int)>('keybd_event');
+
+/// Windows refuses the foreground to a background process unless input just
+/// arrived; an Alt press and release counts. tao does this in Tauri's
+/// set_focus, which is why a second launch focuses its popover.
+void _allowForeground() {
+  const vkMenu = 0x12, extended = 0x1, keyUp = 0x2;
+  _keybdEvent(vkMenu, 0, extended, 0);
+  _keybdEvent(vkMenu, 0, extended | keyUp, 0);
+}
 
 /// True when the focused window belongs to this process, as the settings window does.
 bool foregroundIsOurs() {
@@ -66,6 +76,7 @@ class PopoverWindow with WindowListener {
       return;
     }
     await _position();
+    if (!foregroundIsOurs()) _allowForeground();
     await windowManager.show();
     await windowManager.focus();
   }

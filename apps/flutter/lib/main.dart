@@ -37,6 +37,7 @@ Future<void> main(List<String> args) async {
     onSettings: settings.open,
     onQuit: () async {
       await trayManager.destroy();
+      _instanceLock?.closeSync();
       exit(0);
     },
   ).init();
@@ -44,8 +45,10 @@ Future<void> main(List<String> args) async {
   model.start();
 }
 
-// Held for the life of the process: the lock is the single-instance guard.
-RandomAccessFile? instanceLock;
+// The single-instance guard, held until Quit. It must be read somewhere: a
+// release build drops a global nobody reads, and a collected file closes
+// its handle, which releases the lock.
+RandomAccessFile? _instanceLock;
 ServerSocket? _ping;
 
 /// False when another instance runs; that one gets a ping and toggles its
@@ -64,7 +67,7 @@ Future<bool> _firstInstance(String dir, Future<void> Function() toggle) async {
     } catch (_) {}
     return false;
   }
-  instanceLock = lock;
+  _instanceLock = lock;
   _ping = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
   portFile.writeAsStringSync('${_ping!.port}');
   _ping!.listen((s) {
