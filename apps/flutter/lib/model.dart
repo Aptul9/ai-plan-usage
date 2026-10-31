@@ -20,6 +20,16 @@ const iconStyles = ['solid', 'number', 'ring', 'ring+number', 'bar'];
 
 String nowIso() => DateTime.now().toUtc().toIso8601String();
 
+/// An error whose message goes to the user as is.
+class AppError implements Exception {
+  const AppError(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class OauthCreds {
   const OauthCreds({required this.access, required this.refresh, required this.expiresAt, this.accountId});
 
