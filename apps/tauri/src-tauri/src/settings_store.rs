@@ -2,9 +2,15 @@ use crate::accounts::{self, Account, Provider, Source};
 use crate::meridian::MeridianConfig;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const SETTINGS_VERSION: u32 = 2;
+
+/// Set when settings.json exists, could not be used, and copying it aside
+/// failed: saving would overwrite the only copy of its tokens.
+static PERSIST_BLOCKED: AtomicBool = AtomicBool::new(false);
 
 /// Version 1: fixed providers, one Copilot token. Read only, for migration.
 #[derive(Debug, Default, Deserialize)]
@@ -82,7 +88,8 @@ fn migrate_v1(v1: PersistV1) -> Persist {
 }
 
 /// Either layout; the bool says the file must be rewritten. A version newer
-/// than this build is left alone.
+/// than this build gives None: the caller copies the file aside and loads
+/// defaults.
 fn parse(raw: &str) -> Option<(Persist, bool)> {
     let value: serde_json::Value = serde_json::from_str(raw).ok()?;
     match value.get("settingsVersion").and_then(|v| v.as_u64()) {
@@ -111,7 +118,8 @@ fn apply(state: &mut AppState, p: Persist) {
 }
 
 /// Copies a settings file this build cannot use next to it, so the first save
-/// of defaults does not destroy the only copy of its tokens.
+/// of defaults does not destroy the only copy of its tokens. When the copy
+/// fails, saving stays off for this run.
 fn keep_unreadable(path: &Path, why: &str) {
     let backup = path.with_file_name(format!(
         "settings.unreadable-{}.json",
@@ -119,7 +127,22 @@ fn keep_unreadable(path: &Path, why: &str) {
     ));
     match std::fs::copy(path, &backup) {
         Ok(_) => eprintln!("settings: {why}; kept a copy at {}", backup.display()),
-        Err(e) => eprintln!("settings: {why}; copying it aside failed: {e}"),
+        Err(e) => {
+            PERSIST_BLOCKED.store(true, Ordering::Relaxed);
+            eprintln!("settings: {why}; copying it aside failed: {e}; changes will not be saved");
+        }
+    }
+}
+
+/// Keeps the v1 file before it is rewritten as v2. An existing backup is
+/// never overwritten; a missing file (legacy migration) has nothing to keep.
+fn backup_v1(path: &Path) {
+    let bak = path.with_file_name("settings.v1.bak.json");
+    if !path.exists() || bak.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::copy(path, &bak) {
+        eprintln!("settings: copying {} to {} failed: {e}", path.display(), bak.display());
     }
 }
 
@@ -152,12 +175,17 @@ pub fn load_or_default() -> AppState {
     apply(&mut state, persisted);
     state.ensure_snapshots();
     if rewrite {
+        backup_v1(&settings_path());
         persist(&state);
     }
     state
 }
 
 pub fn persist(state: &AppState) {
+    if PERSIST_BLOCKED.load(Ordering::Relaxed) {
+        eprintln!("settings: not saving, the unusable settings file could not be copied aside");
+        return;
+    }
     let payload = Persist {
         settings_version: SETTINGS_VERSION,
         accounts: state.accounts.clone(),
@@ -171,7 +199,12 @@ pub fn persist(state: &AppState) {
     let tmp = path.with_extension("json.tmp");
     let saved = std::fs::create_dir_all(shared_dir())
         .and_then(|_| serde_json::to_string_pretty(&payload).map_err(std::io::Error::other))
-        .and_then(|text| std::fs::write(&tmp, text))
+        .and_then(|text| {
+            // Flushed to disk before the rename, so a crash cannot leave an empty settings.json.
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(text.as_bytes())?;
+            f.sync_all()
+        })
         .and_then(|_| std::fs::rename(&tmp, &path));
     if let Err(e) = saved {
         eprintln!("settings: saving {} failed: {e}", path.display());
@@ -222,8 +255,37 @@ mod tests {
     }
 
     #[test]
-    fn newer_version_is_left_alone() {
+    fn newer_version_is_not_parsed() {
         assert!(parse(r#"{"settingsVersion":3,"accounts":[]}"#).is_none());
+    }
+
+    #[test]
+    fn unreadable_file_that_cannot_be_copied_blocks_saving() {
+        let dir = std::env::temp_dir().join(format!("ai-plan-usage-test-blocked-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // A directory named settings.json can be neither read nor copied.
+        let path = dir.join("settings.json");
+        std::fs::create_dir_all(&path).unwrap();
+        assert!(read_settings(&path, &dir.join("legacy.json")).is_none());
+        assert!(PERSIST_BLOCKED.load(Ordering::Relaxed));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn v1_backup_is_made_once_and_never_overwritten() {
+        let dir = std::env::temp_dir().join(format!("ai-plan-usage-test-v1bak-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        let bak = dir.join("settings.v1.bak.json");
+        backup_v1(&path);
+        assert!(!bak.exists(), "no source, no backup");
+        std::fs::write(&path, "first").unwrap();
+        backup_v1(&path);
+        std::fs::write(&path, "second").unwrap();
+        backup_v1(&path);
+        assert_eq!(std::fs::read_to_string(&bak).unwrap(), "first");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

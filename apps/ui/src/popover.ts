@@ -44,6 +44,7 @@ interface ErrorView {
 let errorPanelOpen = false
 let selectedErrorProvider: string | null = null
 let latestErrors: ErrorView[] = []
+let lastPanelKey = ''
 
 function fmtDuration(ms: number): string {
   if (ms <= 0) return '0m'
@@ -276,16 +277,22 @@ function renderErrorPanel(): void {
   const chip = $('chip') as HTMLButtonElement | null
   if (!panel) return
 
+  const open = errorPanelOpen && latestErrors.length > 0
+  if (open && !latestErrors.some((e) => e.id === selectedErrorProvider)) {
+    selectedErrorProvider = latestErrors[0].id
+  }
+  // Rebuilt only when the content changes: the 1 s tick would otherwise replace
+  // a button under the pointer and drop keyboard focus.
+  const key = open ? JSON.stringify([selectedErrorProvider, latestErrors]) : 'closed'
+  if (key === lastPanelKey) return
+  lastPanelKey = key
+
   panel.innerHTML = ''
-  if (!errorPanelOpen || latestErrors.length === 0) {
+  if (!open) {
     panel.className = 'error-panel hidden'
     chip?.setAttribute('aria-expanded', 'false')
     requestAnimationFrame(reportSize)
     return
-  }
-
-  if (!selectedErrorProvider || !latestErrors.some((e) => e.id === selectedErrorProvider)) {
-    selectedErrorProvider = latestErrors[0].id
   }
 
   const ordered = [...latestErrors].sort((a, b) => {
@@ -317,6 +324,15 @@ function renderErrorPanel(): void {
       item.error.retryAt ? `Retry at ${formatTimestamp(item.error.retryAt)}` : null,
     ].filter(Boolean)
     if (meta.length > 0) appendText(wrap, 'error-meta', meta.join(' · '))
+
+    if (item.error.kind === 'signed-out') {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'error-action'
+      btn.textContent = 'Open Settings'
+      btn.addEventListener('click', () => void window.mock.openSettings())
+      wrap.appendChild(btn)
+    }
 
     panel.appendChild(wrap)
   }
@@ -354,7 +370,6 @@ function render(s: PublicState): void {
     const snap = s.snapshots && s.snapshots[id]
     if (!snap) continue
     const errored = !!snap.error
-    row.classList.toggle('err-state', errored)
     row.title = errored ? snap.error!.message : ''
     const widgets = row.querySelectorAll('.widget')
     const layout = ROW_LAYOUTS[provider] || ROW_LAYOUTS.claude

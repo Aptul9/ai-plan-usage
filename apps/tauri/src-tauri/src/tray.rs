@@ -273,11 +273,11 @@ pub fn refresh_icon(app: &AppHandle, state: &AppState) {
         .session
         .used_pct
         .map(|p| format!("{}%", p.round() as i32))
-        .unwrap_or_else(|| "\u{2014}".into());
+        .unwrap_or_else(|| "-".into());
     let week = state
         .weekly
         .used_pct
         .map(|p| format!("{}%", p.round() as i32))
-        .unwrap_or_else(|| "\u{2014}".into());
+        .unwrap_or_else(|| "-".into());
     let _ = tray.set_tooltip(Some(format!("Session {sess} \u{00b7} Weekly {week}")));
 }

@@ -79,6 +79,7 @@ declare global {
   interface MockAPI {
     getSnapshot(): Promise<PublicState>
     quit(): Promise<void>
+    openSettings(): Promise<void>
     getAutostart(): Promise<boolean>
     setAutostart(on: boolean): Promise<boolean>
     getSettings(): Promise<SettingsBundle>

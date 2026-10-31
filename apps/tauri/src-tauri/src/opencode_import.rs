@@ -28,14 +28,15 @@ pub fn read_copilot(conn: &Connection) -> rusqlite::Result<Vec<CopilotLogin>> {
         Ok((
             r.get::<_, String>(0)?,
             r.get::<_, Option<String>>(1)?,
-            r.get::<_, String>(2)?,
+            r.get::<_, Option<String>>(2)?,
         ))
     })?;
     let mut out = Vec::new();
     for row in rows {
         let (id, label, value) = row?;
-        let token = serde_json::from_str::<Value>(&value)
-            .ok()
+        // NULL, non-JSON or token-less rows are skipped.
+        let token = value
+            .and_then(|v| serde_json::from_str::<Value>(&v).ok())
             .and_then(|v| v.get("access").and_then(Value::as_str).map(str::to_string))
             .filter(|t| !t.is_empty());
         let Some(token) = token else { continue };
@@ -75,6 +76,7 @@ mod tests {
             INSERT INTO credential VALUES ('c3','openai','OAuth','{"type":"oauth","access":"x"}',3);
             INSERT INTO credential VALUES ('c4','github-copilot',NULL,'{"type":"oauth"}',4);
             INSERT INTO credential VALUES ('c5','github-copilot',NULL,'{"type":"oauth","access":"gho_c"}',5);
+            INSERT INTO credential VALUES ('c6','github-copilot','Copilot - Null',NULL,6);
             "#,
         )
         .unwrap();

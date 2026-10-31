@@ -143,3 +143,27 @@ pub async fn fetch_all(
     let (results, meridian) = futures::join!(join_all(own), meridian_task);
     FetchOutput { results, meridian }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refresh_failure_kind() {
+        let cases = [
+            ("network: timed out", "offline", "Codex unreachable. Retrying next poll."),
+            ("HTTP 400: invalid_grant", "signed-out", "Sign in again."),
+            ("HTTP 429: slow down", "rate-limited", "Codex token refresh is rate limited. Retrying later."),
+            ("HTTP 503: unavailable", "upstream", "Codex sign-in service error. Retrying next poll."),
+            ("refresh HTTP 502: bad gateway", "upstream", "Codex sign-in service error. Retrying next poll."),
+            ("refresh HTTP 401: x", "signed-out", "Sign in again."),
+        ];
+        for (detail, kind, message) in cases {
+            let e = refresh_failed("Codex", "Sign in again.", detail.into())
+                .error
+                .unwrap();
+            assert_eq!((e.kind.as_str(), e.message.as_str()), (kind, message), "{detail}");
+            assert_eq!(e.detail.as_deref(), Some(detail));
+        }
+    }
+}

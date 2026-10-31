@@ -22,13 +22,13 @@ It stays out of the way, lives in the tray, and shows only the usage signals tha
 - Codex session and weekly usage
 - GitHub Copilot monthly usage and overage
 - reset countdowns
-- a dynamic tray icon for the provider you care about most
+- a dynamic tray icon for the account you care about most
 
 Daily use is handled through the UI. Click the tray icon, check the popover, adjust settings when needed, and get back to work.
 
 ## Easy Tray Readout
 
-The tray icon shows the selected primary provider at a glance. The number and ring are designed for quick checking, and the tooltip gives the current session and weekly percentages without opening a full window.
+The tray icon shows the selected primary account at a glance. The number and ring are designed for quick checking, and the tooltip gives the current session and weekly percentages without opening a full window.
 
 <p align="center">
   <img src="screenshots/tooltip.png" width="235" alt="Tray tooltip showing session and weekly usage">
@@ -36,7 +36,7 @@ The tray icon shows the selected primary provider at a glance. The number and ri
 
 ## Compact Usage Popover
 
-The popover shows each enabled provider in one compact view. Claude and Codex show session and weekly usage; Copilot shows monthly usage and overage. Reset countdowns are visible where they matter.
+The popover shows each enabled account in one compact view. Claude and Codex show session and weekly usage; Copilot shows monthly usage and overage. Reset countdowns are visible where they matter.
 
 <p align="center">
   <img src="screenshots/popup.png" width="322" alt="ai-plan-usage tray popover showing Claude, Codex, and Copilot usage">
@@ -47,14 +47,14 @@ The popover shows each enabled provider in one compact view. Claude and Codex sh
 Settings are plain and practical: add and order accounts, pick the one behind the tray icon, point the app at Meridian, set the polling interval and change the icon style.
 
 <p align="center">
-  <img src="screenshots/settings.png" width="520" alt="ai-plan-usage settings window with provider toggles and icon options">
+  <img src="screenshots/settings.png" width="520" alt="ai-plan-usage settings window with account toggles and icon options">
 </p>
 
 ## Features
 
 - **Claude, Codex, and GitHub Copilot** usage in one tray app.
-- **Provider toggles** so the popover only shows what you use.
-- **Primary provider selection** for the tray icon number and ring.
+- **Account toggles** so the popover only shows what you use.
+- **Primary account selection** for the tray icon number and ring.
 - **Configurable refresh interval** with a 5 minute default.
 - **Several accounts per provider**, each with its own name, order and toggle.
 - **Claude from Meridian or a direct sign-in**, Codex from a device-code sign-in, Copilot from a pasted token or a login copied from OpenCode. The Claude Code and Codex CLIs are not needed.

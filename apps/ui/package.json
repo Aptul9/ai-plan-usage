@@ -2,7 +2,7 @@
   "name": "ai-plan-usage-ui",
   "version": "0.0.4",
   "private": true,
-  "description": "Shared UI sources for ai-plan-usage.",
+  "description": "UI sources for ai-plan-usage.",
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },

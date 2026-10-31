@@ -4,6 +4,7 @@ use crate::opencode_import;
 use crate::popover;
 use crate::scheduler;
 use crate::settings_store;
+use crate::settings_win;
 use crate::state::AppState;
 use crate::tray;
 use serde_json::{json, Value};
@@ -82,6 +83,12 @@ pub async fn snapshot_get(state: State<'_, AppStateMutex>) -> Result<Value, Stri
 pub async fn app_quit(app: AppHandle) -> Result<(), String> {
     app.exit(0);
     Ok(())
+}
+
+/// Async: building the window from a sync command deadlocks on Windows.
+#[tauri::command]
+pub async fn settings_open(app: AppHandle) -> Result<(), String> {
+    settings_win::open(&app).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -343,11 +350,17 @@ pub async fn codex_login_finish(
         if state.lock().await.pending.codex.as_ref() != Some(&d) {
             return Err("Replaced by a newer sign-in".into());
         }
-        if let Some(creds) = oauth::codex_device_poll(&d).await? {
-            state.lock().await.pending.codex = None;
-            let mut acc = Account::new(Provider::Codex, Source::Oauth, &label_or(&label, "Codex"));
-            acc.oauth = Some(creds);
-            return Ok(add_account(&app, state.inner(), acc).await);
+        match oauth::codex_device_poll(&d).await {
+            Ok(Some(creds)) => {
+                state.lock().await.pending.codex = None;
+                let mut acc = Account::new(Provider::Codex, Source::Oauth, &label_or(&label, "Codex"));
+                acc.oauth = Some(creds);
+                return Ok(add_account(&app, state.inner(), acc).await);
+            }
+            Ok(None) => {}
+            // A dropped connection is retried until the code expires.
+            Err(e) if e.starts_with("network:") => {}
+            Err(e) => return Err(e),
         }
         if started.elapsed() > DEVICE_TIMEOUT {
             state.lock().await.pending.codex = None;

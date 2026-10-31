@@ -1,6 +1,6 @@
 # Indicator coloring
 
-The tray icon number, the popover ring, and the popover number are colored based on usage pace, not raw percentage. The rule answers one question: is current usage on track to comfortably reach the next reset, or burning faster than expected?
+The tray icon number and the popover ring arc are colored based on usage pace, not raw percentage. The popover number uses the text color, for contrast in both themes. The rule answers one question: is current usage on track to comfortably reach the next reset, or burning faster than expected?
 
 ## What each color means
 

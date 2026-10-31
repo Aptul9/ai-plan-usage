@@ -203,14 +203,9 @@ function startRename(row: HTMLDivElement, a: Account): void {
     done = true
     const next = input.value.trim()
     input.blur()
-    if (save && next && next !== a.label) {
-      try {
-        await window.mock.renameAccount(a.id, next)
-      } catch (e) {
-        setAddStatus(errText(e), 'err')
-      }
-    }
-    await reload()
+    await runAction('accounts-status', async () => {
+      if (save && next && next !== a.label) await window.mock.renameAccount(a.id, next)
+    })
   }
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') void finish(true)
@@ -313,6 +308,9 @@ function stopCodexTimer(): void {
 function startCodexTimer(secs: number, run: number): void {
   stopCodexTimer()
   const el = byId('codex-expiry')
+  // No usable expiry: no countdown line rather than "NaN:NaN".
+  el?.classList.toggle('hidden', !Number.isFinite(secs))
+  if (!Number.isFinite(secs)) return
   const end = Date.now() + secs * 1000
   const tick = (): void => {
     if (run !== codexRun) return stopCodexTimer()
@@ -422,12 +420,13 @@ function wireAdd(): void {
     }
   }))
 
-  byId('copilot-import-load')?.addEventListener('click', async () => {
+  byId('copilot-import-load')?.addEventListener('click', (ev) => busy(ev.currentTarget as HTMLButtonElement, async () => {
     const list = byId('copilot-import-list')
     if (!list) return
     list.innerHTML = ''
     try {
       const logins = await window.mock.copilotImportList()
+      list.innerHTML = ''
       if (logins.length === 0) {
         setAddStatus('No Copilot logins in OpenCode.')
         return
@@ -463,7 +462,7 @@ function wireAdd(): void {
     } catch (e) {
       setAddStatus(errText(e), 'err')
     }
-  })
+  }))
 }
 
 function renderInterval(): void {

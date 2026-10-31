@@ -11,6 +11,7 @@
   window.mock = {
     getSnapshot: () => invoke('snapshot_get'),
     quit: () => invoke('app_quit'),
+    openSettings: () => invoke('settings_open'),
     getAutostart: () => invoke('settings_get_autostart'),
     setAutostart: (on) => invoke('settings_set_autostart', { on: !!on }),
     getSettings: () => invoke('settings_get_all'),

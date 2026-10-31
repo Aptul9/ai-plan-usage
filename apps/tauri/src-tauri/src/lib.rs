@@ -35,6 +35,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::snapshot_get,
             commands::app_quit,
+            commands::settings_open,
             commands::settings_get_autostart,
             commands::settings_set_autostart,
             commands::settings_get_all,

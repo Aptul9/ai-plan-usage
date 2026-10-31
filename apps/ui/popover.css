@@ -285,6 +285,25 @@ body:has(.chip:not(.hidden)) { padding-top: 30px; }
   font-size: 11px;
   color: var(--text-3);
 }
+.error-action {
+  display: block;
+  min-height: 32px;
+  margin-top: 2px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.error-action:hover { background: var(--divider); }
+/* Inset: the panel's overflow clips anything drawn outside its edge. */
+.error-action:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .ring .fg { transition: none; }
