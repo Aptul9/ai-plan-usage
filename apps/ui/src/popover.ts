@@ -154,10 +154,9 @@ function updateWidget(
   const reset = widgetEl.querySelector('.reset') as HTMLElement
   if (errored || pct == null) {
     arc.style.strokeDashoffset = String(CIRCUMFERENCE)
-    // Track only: an empty arc's round cap would leave a dot at 12 o'clock.
-    arc.style.opacity = '0'
+    arc.style.stroke = '#bbb'
     num.textContent = errored ? '!' : '--'
-    num.style.color = errored ? 'var(--danger)' : 'var(--text-3)'
+    num.style.color = '#888'
     reset.textContent = ''
     return
   }
@@ -165,11 +164,9 @@ function updateWidget(
   const { params, totalMs } = paramsForSlot(slotKey)
   const color = colorForWindow(clamped, resetIso, totalMs, params)
   arc.style.strokeDashoffset = String(CIRCUMFERENCE * (1 - clamped / 100))
-  arc.style.opacity = ''
   arc.style.stroke = color
   num.textContent = String(Math.round(clamped))
-  // The arc carries the pace color; the number stays in the text color for contrast in both themes.
-  num.style.color = ''
+  num.style.color = color
   reset.textContent = resetIso
     ? fmtDuration(new Date(resetIso).getTime() - Date.now())
     : ''
@@ -184,30 +181,26 @@ function updateOverageWidget(
   const used = widgetEl.querySelector('.overage-used') as HTMLElement
   const of = widgetEl.querySelector('.overage-of') as HTMLElement
   const reset = widgetEl.querySelector('.reset') as HTMLElement
-  used.style.color = ''
-  of.style.color = ''
   if (errored) {
     used.textContent = '!'
     of.textContent = ''
-    main.style.color = 'var(--danger)'
+    main.style.color = '#888'
     reset.textContent = ''
     return
   }
   if (block && block.usedAbs != null && block.entitlement != null) {
     used.textContent = String(block.usedAbs)
     of.textContent = `of ${block.entitlement}`
-    main.style.color = ''
-    if ((block.overage ?? 0) > 0) {
-      used.style.color = 'var(--danger)'
-      of.style.color = 'var(--danger)'
-    }
+    const color = (block.overage ?? 0) > 0 ? '#dc2626' : '#222'
+    used.style.color = color
+    of.style.color = (block.overage ?? 0) > 0 ? '#dc2626' : '#888'
     reset.textContent = block.resetsAt
       ? fmtDuration(new Date(block.resetsAt).getTime() - Date.now())
       : ''
   } else {
     used.textContent = '--'
     of.textContent = ''
-    main.style.color = 'var(--text-3)'
+    main.style.color = '#888'
     reset.textContent = ''
   }
 }
@@ -370,6 +363,7 @@ function render(s: PublicState): void {
     const snap = s.snapshots && s.snapshots[id]
     if (!snap) continue
     const errored = !!snap.error
+    row.classList.toggle('err-state', errored)
     row.title = errored ? snap.error!.message : ''
     const widgets = row.querySelectorAll('.widget')
     const layout = ROW_LAYOUTS[provider] || ROW_LAYOUTS.claude

@@ -100,7 +100,7 @@ function renderAccounts(): void {
 
 function accountRow(a: Account): HTMLDivElement {
   const row = document.createElement('div')
-  row.className = 'account-row flex items-center gap-2 pl-1 pr-2 min-h-[56px] py-2 transition-colors'
+  row.className = 'account-row flex items-center gap-2 pl-2 pr-4 min-h-[56px] py-2 hover:bg-zinc-50/50 transition-colors'
   row.dataset.id = a.id
 
   const handle = document.createElement('span')
@@ -113,8 +113,7 @@ function accountRow(a: Account): HTMLDivElement {
   const logo = document.createElement('img')
   logo.src = LOGO_SRC[a.provider]
   logo.alt = NAMES[a.provider]
-  // The OpenAI and Copilot marks are black.
-  logo.className = 'w-5 h-5 mx-1 shrink-0' + (a.provider === 'claude' ? '' : ' dark:invert') + (a.enabled ? '' : ' opacity-40')
+  logo.className = 'w-5 h-5 mx-1 shrink-0' + (a.enabled ? '' : ' opacity-40')
   row.appendChild(logo)
 
   const text = document.createElement('div')
@@ -434,11 +433,11 @@ function wireAdd(): void {
       setAddStatus('')
       for (const l of logins) {
         const row = document.createElement('div')
-        row.className = 'flex items-center gap-3 rounded-lg border border-stroke bg-subtle pl-3 pr-1.5 py-1.5 text-sm'
+        row.className = 'flex items-center gap-3 rounded-lg border border-zinc-200 bg-white pl-3 pr-1.5 py-1.5 text-sm'
         const logo = document.createElement('img')
         logo.src = LOGO_SRC.copilot
         logo.alt = ''
-        logo.className = 'w-4 h-4 shrink-0 dark:invert'
+        logo.className = 'w-4 h-4 shrink-0'
         const name = document.createElement('span')
         name.className = 'flex-1 min-w-0 truncate'
         name.textContent = l.label
