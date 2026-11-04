@@ -1,7 +1,7 @@
 name: ai_plan_usage
 description: "ai-plan-usage Windows tray app, Flutter build."
 publish_to: 'none'
-version: 0.1.0
+version: 0.1.1
 
 environment:
   sdk: ^3.10.4
