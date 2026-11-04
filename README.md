@@ -58,33 +58,37 @@ Settings are plain and practical: add and order accounts, pick the one behind th
 - **Configurable refresh interval** with a 5 minute default.
 - **Several accounts per provider**, each with its own name, order and toggle.
 - **Claude from Meridian or a direct sign-in**, Codex from a browser sign-in, Copilot from a pasted token or a login copied from OpenCode. The Claude Code and Codex CLIs are not needed.
-- **Local settings** under `%APPDATA%\ai-plan-usage\`, tokens included, in plain text.
+- **Local settings** under `%APPDATA%\ai-plan-usage-flutter\`, tokens included, in plain text.
 - **Pace-aware coloring** for the tray icon and popover (see `docs/coloring.md`).
 - **No hosted backend** for your usage data.
 - **No analytics dashboard** or historical reporting layer.
 
+## Install
+
+Download `ai-plan-usage-<version>-windows-x64-setup.exe` from [Releases](https://github.com/Aptul9/ai-plan-usage/releases) and run it. It installs for the current user under `%LOCALAPPDATA%\Programs\ai-plan-usage`, no admin rights, and adds `ai-plan-usage` to the Start menu. Uninstall from Settings > Apps; settings and sign-ins stay in `%APPDATA%\ai-plan-usage-flutter\`.
+
+The installer is not signed, so SmartScreen may warn on first run: More info, then Run anyway.
+
 ## Run
 
 ```powershell
-cd apps/ui
-npm install
-
-cd ..\tauri
-npm install
-npm run dev
+cd apps/flutter
+flutter run -d windows
 ```
+
+The Tauri build in `apps/tauri` is kept for comparison: see `apps/tauri/README.md`.
 
 ## Build
 
 ```powershell
-scripts\build-tauri.ps1
+scripts\build-flutter.ps1
 ```
 
-The build output is mirrored into `artifacts/`.
+Needs Flutter 3.38 and Inno Setup 6 (`winget install JRSoftware.InnoSetup`). The app folder is mirrored into `artifacts/flutter/` and the installer is written to `artifacts/`.
 
 ## GitHub Actions
 
-The desktop build workflow runs on `windows-latest` so the app builds as a real Windows `.exe` without Linux cross-compilation setup.
+The desktop build workflow runs on `windows-latest`.
 
-- Every push, pull request, and manual run uploads a `windows-desktop-exes` artifact.
-- Tags that start with `v` also create or update a GitHub Release and upload the `.exe`.
+- Every push, pull request, and manual run uploads a `windows-desktop-exes` artifact: the Flutter installer and the Tauri `.exe`.
+- Tags that start with `v` also create or update a GitHub Release and upload the installer.

@@ -1,6 +1,6 @@
 # Flutter
 
-Flutter build of `ai-plan-usage`, next to the Tauri one for comparison. Same behavior and look; own settings and sign-ins.
+Flutter build of `ai-plan-usage`, the released one. The Tauri build stays next to it for comparison: same behavior and look, own settings and sign-ins.
 
 ## Prereqs
 
@@ -25,6 +25,12 @@ Output folder:
 
 ```text
 apps/flutter/build/windows/x64/runner/Release/
+```
+
+Installer (per-user, Inno Setup 6, script `installer/ai-plan-usage.iss`), with the app build:
+
+```powershell
+scripts\build-flutter.ps1
 ```
 
 ## Outside the app
