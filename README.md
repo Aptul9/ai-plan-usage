@@ -92,3 +92,4 @@ The desktop build workflow runs on `windows-latest`.
 
 - Every push, pull request, and manual run uploads a `windows-desktop-exes` artifact: the Flutter installer and the Tauri `.exe`.
 - Tags that start with `v` also create or update a GitHub Release and upload the installer.
+- The same tags publish the installer to `https://servizi.everbright.it/download/` as `AI-Plan-Usage-Windows-x64-Setup.exe`, next to `AI-Plan-Usage-Windows-x64.json` (`version`, `sha256`, `bytes`, `commit`, `file`) for the products page. The tag must match the `pubspec.yaml` version. Other runs only print the JSON.
