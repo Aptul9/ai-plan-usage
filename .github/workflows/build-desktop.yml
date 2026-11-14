@@ -133,3 +133,64 @@ jobs:
           }
 
           gh release upload $tag $assetPaths --repo $env:GITHUB_REPOSITORY --clobber
+
+  servizi:
+    name: servizi download
+    needs: windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # tag uploads one at a time, a later tag waits; every other run is a dry run with its own group
+    concurrency:
+      group: ${{ startsWith(github.ref, 'refs/tags/v') && 'servizi-download' || format('servizi-dry-run-{0}', github.run_id) }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download installer
+        uses: actions/download-artifact@v7
+        with:
+          name: windows-desktop-exes
+          path: built
+
+      - name: Prepare servizi files
+        env:
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          version=$(sed -nE 's/^version:[[:space:]]*([0-9.]+).*/\1/p' apps/flutter/pubspec.yaml)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match pubspec version $version" >&2
+            exit 1
+          fi
+          scripts/servizi-download.sh "built/ai-plan-usage-$version-windows-x64-setup.exe" "$version" "$COMMIT" servizi
+
+      - name: Publish on servizi.everbright.it
+        # tags pushed to this repository only: never pull requests, forks or branch runs
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Aptul9/ai-plan-usage'
+        working-directory: servizi
+        env:
+          SSH_KEY: ${{ secrets.SERVIZI_DOWNLOAD_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SERVIZI_KNOWN_HOSTS }}
+          TARGET: servizi@${{ secrets.SERVIZI_HOST }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          url=https://servizi.everbright.it/download
+          exe=AI-Plan-Usage-Windows-x64-Setup.exe
+          json=AI-Plan-Usage-Windows-x64.json
+          hash=$(jq -r .sha256 "$json")
+          test "$(sha256sum "$exe" | cut -d' ' -f1)" = "$hash"
+          # the key's forced command (ricevi-build) only accepts "<name> <sha256>" with the file on stdin
+          ssh -q -o BatchMode=yes "$TARGET" "$exe $hash" < "$exe"
+          test "$(curl -fsS --max-time 120 "$url/$exe" | sha256sum | cut -d' ' -f1)" = "$hash"
+          # the JSON goes last, so it never names an installer that is not there yet
+          meta=$(sha256sum "$json" | cut -d' ' -f1)
+          ssh -q -o BatchMode=yes "$TARGET" "$json $meta" < "$json"
+          test "$(curl -fsS --max-time 30 "$url/$json" | sha256sum | cut -d' ' -f1)" = "$meta"
+          echo "$url/$exe $hash"
