@@ -34,6 +34,7 @@ void main() {
     expect(p.length, 2);
     expect(p[0].session?.usedPct, 22.0);
     expect(p[0].session?.resetsAt, startsWith('2026-'));
+    expect((p[0].session?.windowSecs, p[0].weekly?.windowSecs), (5 * 3600, 7 * 86400));
     expect(p[0].weekly?.usedPct, 104.0);
     expect(p[1].error, 'no_token');
   });

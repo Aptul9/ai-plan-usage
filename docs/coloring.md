@@ -71,24 +71,19 @@ Weekly 7d:
 
 ## Provider window lengths
 
-Hardcoded constants:
+Each provider sets the window length on the usage block it returns (`windowSecs`); the color code reads it and knows no provider:
 
-- Claude: session = 5h (Claude `five_hour` window), weekly = 7 days (Claude `seven_day` window).
-- Codex: session = 5h, weekly = 7 days. Assumed identical to Claude; the Codex API does not expose window length.
-- Copilot: monthly entitlement. Coloring stays on the existing overage signal (red when overage > 0, neutral otherwise). The pace logic above does not apply.
+- Claude (direct and Meridian): from the window name, `five_hour` = 5h, `seven_day` = 7 days.
+- Codex: `limit_window_seconds` of each window in the usage response.
+- Copilot: monthly quota, one calendar month back from `quota_reset_date_utc` (28 to 31 days). The MONTH ring uses the weekly parameters; the OVERAGE figure stays red when overage > 0.
 
 ## Fallback
 
-If `resets_at` is missing for a window, the indicator falls back to the previous static rule: `used >= 95% -> red`, `used >= 80% -> amber`, else green.
+If `resets_at` or the window length is missing, the indicator falls back to the previous static rule: `used >= 95% -> red`, `used >= 80% -> amber`, else green.
 
 ## Tuning
 
-Parameters live in code, in two places that must be kept in sync (Rust and TypeScript). To adjust:
-
-- `apps/tauri/src-tauri/src/color.rs` -> `PARAMS_SESSION`, `PARAMS_WEEKLY`.
-- `apps/ui/src/popover.ts` -> `PARAMS_SESSION`, `PARAMS_WEEKLY`.
-
-Window total lengths are also constants in the same files (`SESSION_5H_*`, `WEEKLY_7D_*`).
+Parameters live in `apps/flutter/lib/color.dart` -> `paramsSession`, `paramsWeekly`. Window lengths come from the providers, in `apps/flutter/lib/providers.dart`.
 
 ## Design reference
 

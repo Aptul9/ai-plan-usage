@@ -123,8 +123,8 @@ void main() {
           jsonEncode({
             'plan_type': 'plus',
             'rate_limit': {
-              'primary_window': {'used_percent': 12, 'reset_at': 1793131200},
-              'secondary_window': {'used_percent': 40.5, 'reset_at': 1793563200},
+              'primary_window': {'used_percent': 12, 'reset_at': 1793131200, 'limit_window_seconds': 18000},
+              'secondary_window': {'used_percent': 40.5, 'reset_at': 1793563200, 'limit_window_seconds': 604800},
             },
           }),
           200),
@@ -137,6 +137,7 @@ void main() {
     expect(r.session?.usedPct, 12);
     expect(r.session?.resetsAt, '2026-10-27T20:00:00.000Z');
     expect(r.weekly?.usedPct, 40.5);
+    expect((r.session?.windowSecs, r.weekly?.windowSecs), (18000, 604800));
     expect(r.planType, 'plus');
   });
 
@@ -162,6 +163,10 @@ void main() {
     final r = copilotResult(body({'entitlement': 300, 'remaining': 300}));
     expect(r.planType, 'business');
     expect(r.weekly?.resetsAt, '2026-11-01T00:00:00.000Z');
+    expect(r.weekly?.windowSecs, 31 * 86400, reason: 'October');
+    expect(copilotResult({'quota_reset_date_utc': '2026-03-01T00:00:00Z'}).weekly?.windowSecs, 28 * 86400);
+    expect(copilotResult({'quota_reset_date_utc': '2027-01-01T00:00:00Z'}).weekly?.windowSecs, 31 * 86400);
+    expect(copilotResult({}).weekly?.windowSecs, isNull);
     expect(r.session?.usedPct, isNull);
     expect(copilotResult({'quota_reset_date': '2026-11-01'}).weekly?.resetsAt, '2026-11-01T00:00:00Z');
   });

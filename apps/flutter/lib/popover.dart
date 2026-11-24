@@ -390,8 +390,8 @@ class _PopoverViewState extends State<PopoverView> {
     }
     final clamped = pct.clamp(0, 100).toDouble();
     final resets = block!.resetsAt;
-    final color = Color(colorForWindow(clamped, parseIsoSecs(resets), nowSecs(), weekly ? weekly7dSecs : session5hSecs,
-        weekly ? paramsWeekly : paramsSession));
+    final color =
+        Color(colorForWindow(clamped, parseIsoSecs(resets), nowSecs(), block.windowSecs, weekly ? paramsWeekly : paramsSession));
     return _slot(label, Ring(fraction: clamped / 100, color: color, text: '${clamped.round()}', textColor: color),
         resets == null ? '' : fmtDuration(_msUntil(resets)));
   }

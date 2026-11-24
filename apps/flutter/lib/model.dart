@@ -172,22 +172,26 @@ class MeridianConfig {
 }
 
 class UsageBlock {
-  const UsageBlock({this.usedPct, this.resetsAt, this.usedAbs, this.entitlement, this.overage});
+  const UsageBlock({this.usedPct, this.resetsAt, this.windowSecs, this.usedAbs, this.entitlement, this.overage});
 
   final double? usedPct;
   final String? resetsAt;
+
+  /// Full length of the window ending at `resetsAt`, as the provider defines it.
+  final int? windowSecs;
   final int? usedAbs;
   final int? entitlement;
   final int? overage;
 
-  UsageBlock withPct(double? pct) =>
-      UsageBlock(usedPct: pct, resetsAt: resetsAt, usedAbs: usedAbs, entitlement: entitlement, overage: overage);
+  UsageBlock withPct(double? pct) => UsageBlock(
+      usedPct: pct, resetsAt: resetsAt, windowSecs: windowSecs, usedAbs: usedAbs, entitlement: entitlement, overage: overage);
 
   factory UsageBlock.fromJson(Map<String, dynamic>? j) => j == null
       ? const UsageBlock()
       : UsageBlock(
           usedPct: (j['usedPct'] as num?)?.toDouble(),
           resetsAt: j['resetsAt'] as String?,
+          windowSecs: (j['windowSecs'] as num?)?.toInt(),
           usedAbs: (j['usedAbs'] as num?)?.toInt(),
           entitlement: (j['entitlement'] as num?)?.toInt(),
           overage: (j['overage'] as num?)?.toInt(),
@@ -196,6 +200,7 @@ class UsageBlock {
   Map<String, dynamic> toJson() => {
         'usedPct': usedPct,
         'resetsAt': resetsAt,
+        if (windowSecs != null) 'windowSecs': windowSecs,
         if (usedAbs != null) 'usedAbs': usedAbs,
         if (entitlement != null) 'entitlement': entitlement,
         if (overage != null) 'overage': overage,

@@ -27,6 +27,7 @@ UsageBlock? _block(List windows, String kind) {
     // utilization is 0..1 and can pass 1; one decimal avoids 22.000000000000004.
     usedPct: u is num ? (u * 1000).round() / 10 : null,
     resetsAt: r is int ? DateTime.fromMillisecondsSinceEpoch(r, isUtc: true).toIso8601String() : null,
+    windowSecs: claudeWindowSecs[kind],
   );
 }
 
