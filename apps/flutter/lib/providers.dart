@@ -188,10 +188,15 @@ FetchResult _rateLimitedResult(DateTime? retryAt, String source) {
   );
 }
 
-UsageBlock? _claudeWindow(Object? w) {
+/// Claude names its windows by length; Meridian passes the same names on.
+const claudeWindowSecs = {'five_hour': 5 * 3600, 'seven_day': 7 * 86400};
+
+UsageBlock? _claudeWindow(Map<String, dynamic> data, String kind) {
+  final w = data[kind];
   if (w == null) return null;
   final m = w as Map<String, dynamic>;
-  return UsageBlock(usedPct: (m['utilization'] as num?)?.toDouble(), resetsAt: m['resets_at'] as String?);
+  return UsageBlock(
+      usedPct: (m['utilization'] as num?)?.toDouble(), resetsAt: m['resets_at'] as String?, windowSecs: claudeWindowSecs[kind]);
 }
 
 Future<FetchResult> fetchClaude(http.Client client, String id, OauthCreds creds, SaveRotated save) async {
@@ -274,7 +279,7 @@ Future<FetchResult> fetchClaude(http.Client client, String id, OauthCreds creds,
   setRetryAt(id, null);
   try {
     final data = jsonDecode(body) as Map<String, dynamic>;
-    return done(FetchResult(session: _claudeWindow(data['five_hour']), weekly: _claudeWindow(data['seven_day'])));
+    return done(FetchResult(session: _claudeWindow(data, 'five_hour'), weekly: _claudeWindow(data, 'seven_day')));
   } catch (e) {
     return done(FetchResult.err('Claude parse: $e', 'upstream', detail: 'Body: ${truncate(body.trim(), 600)}'));
   }
@@ -301,6 +306,7 @@ UsageBlock? _codexWindow(Object? w) {
   return UsageBlock(
     usedPct: (m['used_percent'] as num?)?.toDouble(),
     resetsAt: reset == null ? null : _iso(DateTime.fromMillisecondsSinceEpoch(reset * 1000, isUtc: true)),
+    windowSecs: (m['limit_window_seconds'] as num?)?.toInt(),
   );
 }
 
@@ -377,9 +383,18 @@ FetchResult copilotResult(Map<String, dynamic> data) {
   // Consumed = (entitlement - remaining) + overage. Falls back to the old
   // entitlement + overage when `remaining` is absent (pre-2026-06 payloads).
   final usedAbs = entitlement == null ? null : (remaining == null ? entitlement + overage : max(0, entitlement - remaining) + overage);
+  // The quota renews monthly: the window runs from the same day a month before the reset.
+  final reset = monthlyReset == null ? null : DateTime.tryParse(monthlyReset)?.toUtc();
+  final windowSecs = reset?.difference(reset.copyWith(month: reset.month - 1)).inSeconds;
   return FetchResult(
     session: const UsageBlock(),
-    weekly: UsageBlock(usedPct: _readPct(premium), resetsAt: monthlyReset, usedAbs: usedAbs, entitlement: entitlement, overage: overage),
+    weekly: UsageBlock(
+        usedPct: _readPct(premium),
+        resetsAt: monthlyReset,
+        windowSecs: windowSecs,
+        usedAbs: usedAbs,
+        entitlement: entitlement,
+        overage: overage),
     planType: data['copilot_plan'] as String? ?? data['copilotPlan'] as String?,
   );
 }

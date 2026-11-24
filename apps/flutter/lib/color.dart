@@ -6,10 +6,6 @@ const amber = 0xffd97706;
 const red = 0xffdc2626;
 const gray = 0xff888888;
 
-/// Window total length in seconds.
-const session5hSecs = 5 * 3600;
-const weekly7dSecs = 168 * 3600;
-
 class ColorParams {
   const ColorParams(this.aStart, this.aEnd, this.rStart, this.rEnd, [this.redFloor]);
 
@@ -28,7 +24,7 @@ const paramsWeekly = ColorParams(20, 2, 28, 3);
 /// Linear interpolation between `start` (pace=0) and `end` (pace=100).
 double threshold(double pace, double start, double end) => start + (end - start) * (pace / 100);
 
-/// Static fallback used when `resetsAt` is missing.
+/// Static fallback used when `resetsAt` or the window length is missing.
 int colorForPctStatic(double? usedPct) {
   if (usedPct == null) return gray;
   if (usedPct >= 95) return red;
@@ -37,11 +33,11 @@ int colorForPctStatic(double? usedPct) {
 }
 
 /// `nowSecs` and `resetsAtSecs` are UNIX timestamps in seconds.
-int colorForWindow(double? usedPct, int? resetsAtSecs, int nowSecs, int totalWindowSecs, ColorParams params) {
+int colorForWindow(double? usedPct, int? resetsAtSecs, int nowSecs, int? totalWindowSecs, ColorParams params) {
   if (usedPct == null) return gray;
   final floor = params.redFloor;
   if (floor != null && usedPct >= floor) return red;
-  if (resetsAtSecs == null || totalWindowSecs <= 0) return colorForPctStatic(usedPct);
+  if (resetsAtSecs == null || totalWindowSecs == null || totalWindowSecs <= 0) return colorForPctStatic(usedPct);
 
   final remaining = (resetsAtSecs - nowSecs).clamp(0, totalWindowSecs);
   final elapsed = totalWindowSecs - remaining;

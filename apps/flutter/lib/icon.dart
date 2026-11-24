@@ -28,17 +28,16 @@ int pickCritical(int a, int b) {
 }
 
 IconPayload payloadFromState(AppState state) {
-  var sessPct = state.session.usedPct;
-  final weekPct = state.weekly.usedPct;
-  // Copilot has no session window: its monthly value stands in.
-  sessPct ??= weekPct;
+  // Copilot has no session window: its monthly block stands in, colored as the ring is.
+  final standIn = state.session.usedPct == null;
+  final sess = standIn ? state.weekly : state.session;
+  final week = state.weekly;
   final now = nowSecs();
-  // Codex does not expose window lengths; Claude's are assumed for every provider.
   return IconPayload(
-    sessionPct: sessPct,
-    sessionColor: colorForWindow(sessPct, parseIsoSecs(state.session.resetsAt), now, session5hSecs, paramsSession),
-    weeklyPct: weekPct,
-    weeklyColor: colorForWindow(weekPct, parseIsoSecs(state.weekly.resetsAt), now, weekly7dSecs, paramsWeekly),
+    sessionPct: sess.usedPct,
+    sessionColor: colorForWindow(sess.usedPct, parseIsoSecs(sess.resetsAt), now, sess.windowSecs, standIn ? paramsWeekly : paramsSession),
+    weeklyPct: week.usedPct,
+    weeklyColor: colorForWindow(week.usedPct, parseIsoSecs(week.resetsAt), now, week.windowSecs, paramsWeekly),
     error: state.error != null,
   );
 }

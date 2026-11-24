@@ -1,6 +1,10 @@
 import 'package:ai_plan_usage/color.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const session5hSecs = 5 * 3600;
+const weekly7dSecs = 168 * 3600;
+const month30dSecs = 30 * 86400;
+
 int run(double used, double pacePct, ColorParams params, int total) {
   const now = 1700000000;
   final elapsed = (pacePct / 100 * total).toInt();
@@ -40,7 +44,17 @@ void main() {
     expect(run(96, 86, p, t), red);
   });
 
-  test('missing resets falls back to static, missing pct is gray', () {
+  test('monthly window paces over the whole month', () {
+    // 6d19h left of 30 days: pace 77. The old 7-day length put pace at 3.
+    const now = 1700000000, left = 6 * 86400 + 19 * 3600;
+    expect(colorForWindow(24, now + left, now, month30dSecs, paramsWeekly), green);
+    expect(colorForWindow(75, now + left, now, month30dSecs, paramsWeekly), green);
+    expect(colorForWindow(75, now + left, now, weekly7dSecs, paramsWeekly), red);
+    expect(run(40, 10, paramsWeekly, month30dSecs), red);
+  });
+
+  test('missing resets or window length falls back to static, missing pct is gray', () {
+    expect(colorForWindow(85, 1000, 0, null, paramsWeekly), amber);
     expect(colorForWindow(96, null, 0, session5hSecs, paramsSession), red);
     expect(colorForWindow(85, null, 0, session5hSecs, paramsSession), amber);
     expect(colorForWindow(40, null, 0, session5hSecs, paramsSession), green);
